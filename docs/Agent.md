@@ -17,7 +17,6 @@ riscv_cpu/
 │   └── Agent.md          # 致 AI Agent 的开发指导文档
 │
 ├── src/                  # 源代码目录
-│   ├── __init__.py
 │   ├── control_signals.py         # Decoder使用常量与控制包定义 (1)
 │   ├── fetch.py          # IF 阶段 (3)
 │   ├── decode.py         # ID 阶段 (1)
@@ -84,7 +83,19 @@ class MockModule(Module):
 # Agent 指导文档：Assassyn RV32I 五级流水线 CPU 实现指南
 
 **角色定义**：你是一名精通 Python 元编程和计算机体系结构的硬件工程师。
-**任务目标**：基于 `Assassyn` 框架，按照设计文档逐步实现一个 RV32I 处理器，并为每个阶段编写单元测试。
+**任务目标**：基于 `Assassyn` 框架，按照设计文档逐步实现一个 RV32I 处理器，并为每个阶段编写单元测试。任务需要的所有非 Apptainer 内容都在 MyCpu/ 文件夹下。特别注意：所有代码的执行、仿真与验证必须在 Apptainer 容器环境中进行。
+
+## 0. 环境与容器配置 (Environment & Container)
+
+本项目依赖 Apptainer 容器来提供统一的 Assassyn 运行时依赖。
+
+1.  **容器镜像位置**：
+    *   假设 `assassyn.sif` (容器镜像) 位于项目根目录或环境变量可访问的路径。
+    *   如果镜像不存在，需在 Assassyn 根目录执行 `make build-apptainer` 生成。
+
+2.  **路径挂载规则**：
+    *   代码编写在宿主机（Host）进行。
+    *   代码运行在容器（Container）内部。
 
 ## 1. 核心设计文档位置 (Context)
 
@@ -152,9 +163,25 @@ if __name__ == "__main__":
 ```
 
 ### 第三步：运行验证
-在终端执行：`python tests/test_{module_name}.py`。如果通过，进入下一模块开发。
 
----
+**这是与传统开发最大的不同点。** 你不能直接使用 `python` 命令，必须通过 `apptainer` 包装器。
+
+### 3.1 编写测试驱动 (`tests/common.py`)
+代码编写逻辑不变，依然使用 `run_simulator`。Assassyn 库在容器内会自动调用容器内的 Verilator。
+
+### 3.2 运行测试 (Execution Command)
+
+当你需要运行测试脚本（例如 `tests/test_fetch.py`）时，请使用以下指令格式：
+
+```bash
+# 格式：apptainer exec --bind <宿主机代码目录> <镜像路径> python <脚本路径>
+
+# 示例（假设在 riscv_cpu 根目录下运行）：
+apptainer exec --bind $(pwd) /tmp/assassyn.sif python tests/test_fetch.py
+```
+
+*   **`--bind $(pwd)`**: 极其重要！这将当前目录挂载到容器内，确保 Python 能找到 `src` 和 `tests` 模块。
+*   **验证标准**：如果终端输出了 Assassyn 的 Logo 和仿真日志（`log()` 内容），说明容器调用成功。
 
 ## 4. 分步开发路线图 (Roadmap)
 

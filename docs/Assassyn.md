@@ -275,7 +275,7 @@ Assassyn 引入了一种更高级的抽象：**基于 FIFO 的弹性流水线 (E
 在代码构建阶段（Elaboration），我们需要建立模块之间的物理连接。这一过程涉及 `__init__` (定义)、`build`参数(感知)、`async_called` (连接) 和 `bind` (配置)。
 
 ### 2.1 接口定义：`Port`
-在 Module 的 `__init__` 中声明“该级流水线接收什么样的数据”，相当于在芯片上凿出物理插孔。
+在 Module 的 `__init__` 中声明“该级流水线接收什么样的数据”，相当于在芯片上凿出物理插孔，一般只用于放置输入端口。
 
 ```python
 class Execution(Module):
