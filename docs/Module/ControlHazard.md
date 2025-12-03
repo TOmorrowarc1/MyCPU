@@ -1,0 +1,2 @@
+控制冒险系统由EX阶段后的branch_target_reg与IF,ID,EX对其响应连线构成，行为如下：在EX阶段计算出miss时，当周期将计算出目标值写入branch_target_reg；否则保持其为0.
+如果某周期开始时branch_target_reg不为0，则IF级取其值作为PC输入，ID级清除当前指令，EX级当前指令作废，只向该寄存器写入0.
