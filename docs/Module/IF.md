@@ -1,12 +1,5 @@
-这是一份关于 **IF (取指) 阶段** 的详细设计文档。
-
-这份设计完全遵循了我们之前确立的 **“模块分离（Module/Impl）”**、**“刚性流水线（Rigid Pipeline）”** 以及 **“优先级多路选择（Priority Mux）”** 的设计原则。
-
----
-
 # RV32I IF (Instruction Fetch) 模块设计文档
 
-> **版本**：1.0
 > **依赖**：Assassyn, SRAM, Downstream 机制
 
 ## 1. 模块概述
@@ -53,12 +46,11 @@ class FetcherImpl(Downstream):
         icache: SRAM,         # 引用 ICache
         decoder: Module,      # 下一级模块 (用于发送指令)
 
-        # --- 反馈控制信号 (来自 ControlHazardUnit / DataHazardUnit) ---
-        stall_if: Value,      # 1: 暂停取指 (保持当前 PC)
-        flush_if: Value,      # 1: 冲刷流水线 (分支预测错误/跳转)
-        target_pc: Value      # 跳转的目标地址
+        # --- 反馈控制信号 (来自 DataHazardUnit/ControlHazardUnit) ---
+        stall_if: Value,      # 暂停取指 (保持当前 PC)
+        branch_target: Array, # 不为0时，根据目标地址冲刷流水线
     ):
-        pass # 实现见下文
+    pass # 实现见下文
 ```
 
 ---
@@ -69,28 +61,30 @@ IF 阶段的逻辑核心是一个 **三级优先级多路选择器 (Priority Mux
 
 **优先级**：**Flush (最高)** > **Stall** > **Normal (最低)**
 
+### 3.0 通用行为：取出当前 PC_reg 中值
+
+`now_pc = pc_reg[0]`
+
 ### 3.1 状态 1：Flush (冲刷/跳转)
-*   **触发条件**：`flush_if == 1`（通常来自 EX 级的 `branch_taken` 或 ID 级的 `jal`）。
-*   **PC 行为**：`Next_PC = target_pc`。
-    *   *纠正*：你提到将 PC 置为 `Ins+4`，这是不准确的。如果跳转到 `T`，PC 下一拍必须变成 `T`，这样才能在下一拍取到 `T` 处的指令。`T+4` 是下下拍的事。
-*   **SRAM 行为**：立即驱动 `Addr = target_pc`。
+*   **触发条件**：`branch_target != 0`（来自 EX 级的 `branch` 信息）。
+*   **SRAM 行为**：`now_pc = branch_target`，使用 `now_pc` 驱动SRAM。
     *   为了让 ID 级在下一拍能拿到正确的跳转目标指令，我们必须在当前拍就改变 SRAM 地址。
-*   **FIFO 行为**：发送 **气泡 (NOP)**。
-    *   因为当前 IF 取出的指令（PC+4）是错误路径上的，不能发给 ID。
+*   **PC 行为**：`next_pc = now_pc+4`。
 
 ### 3.2 状态 2：Stall (暂停)
-*   **触发条件**：`stall_if == 1`（通常来自 ID 级的 Load-Use 冒险或 FIFO 满）。
-*   **PC 行为**：`Next_PC = Current_PC` (保持不变)。
-*   **SRAM 行为**：**保持驱动** `Addr = Current_PC`。
-    *   *关键*：ID 级因为 Stall 正在重试读取 SRAM 的输出。如果 IF 级切断了地址或改了地址，SRAM 的输出就会变，导致 ID 级读错。必须稳住地址线！
-*   **FIFO 行为**：**不发送** (Valid=0) 或发送气泡。
+*   **触发条件**：`stall_if == 1`（通常来自 ID 级的 Load-Use 冒险）。
+*   **SRAM 行为**： 不写入，保持上一周期pc。
+    *   ID 级因为 Stall 正在重试读取 SRAM 的输出。
+*   **PC 行为**：`next_pc = now_pc` (保持不变)。
 
 ### 3.3 状态 3：Normal (正常)
 *   **触发条件**：无 Flush 且无 Stall。
-*   **PC 行为**：`Next_PC = Current_PC + 4`。
-*   **SRAM 行为**：驱动 `Addr = Current_PC`。
-    *   注意：这里有个微妙的时序。SRAM 读的是 `Current_PC` 的指令。PC 寄存器更新为 `Current+4` 是为了下一拍读下一条。
-*   **FIFO 行为**：发送 **有效指令**。
+*   **SRAM 行为**：直接用 `now_pc` 驱动 SRAM。
+*   **PC 行为**：`next_PC = now_pc + 4`。
+
+### 3.4 通用行为：写回
+
+`next_pc` 计算完成后，写回 `pc_reg[0]`。
 
 ---
 
@@ -146,26 +140,3 @@ IF 阶段的逻辑核心是一个 **三级优先级多路选择器 (Priority Mux
         real_packet = flush_if.select(NOP_PACKET, packet)
         decoder.async_called(packet=real_packet)
 ```
-
----
-
-## 5. 极端情况分析：Flush 与 Stall 同时出现
-
-你问：*“最差劲的情况，是 Flush 与 Stall 信号同时出现。为什么能够出现这个情况？”*
-
-**场景复现：**
-1.  **ID 级**：正在处理一条 `LW` 指令，并检测到了 Load-Use 冒险（针对 EX 级）。于是发出 `Stall_IF`。
-2.  **EX 级**：正在处理一条 `BEQ` 指令（分支），并且判断**预测失败**，需要跳转。于是发出 `Flush_IF`。
-
-**判定原则：Flush 拥有绝对优先权。**
-
-*   **原因**：
-    *   Stall 是为了“保住”当前流水线里的指令，让它正确执行。
-    *   Flush 意味着当前流水线里的指令（包括 ID 级那个正在喊 Stall 的 `LW`）都是**错误路径上的废指令**。
-    *   既然是废指令，就没有“保住”的必要了。直接杀掉，跳转到新地址。
-
-**硬件行为**：
-在 `final_next_pc` 的 Mux 树中，`flush_if` 处于最外层（最后选择），它会无视 `stall_if` 的值，强行将 PC 修改为 `target_pc`，并打破死锁。
-
-**结论**：
-你的设计中不需要特殊处理这个“冲突”，只需要确保 **Mux 的优先级顺序是 Flush > Stall** 即可。逻辑会自动处理一切。

@@ -19,13 +19,12 @@ ex_ctrl_signals = Record(
     # 操作数来源选择 (混合了语义选择与旁路选择)
     # 0: 来自级间寄存器的 RS 数据
     # 1: 来自级间寄存器的 PC/Imm
-    # 2: 来自 MEM 阶段的旁路数据 (EX-MEM Bypass)
-    # 3: 来自 WB 阶段的旁路数据 (MEM-WB Bypass)
-    # 4: 常数 4 (仅 op2_sel 用于 JAL/JALR Link)
-    op1_sel   = Bits(4),    
+    # 2: 常数 0 - op1_sel 用于 LUI等 / 常数 4 - op2_sel 用于 JAL/JALR Link
+    # 3: 来自 MEM 阶段的旁路数据 (EX-MEM Bypass)
+    # 4: 来自 WB 阶段的旁路数据 (MEM-WB Bypass)
+    op1_sel   = Bits(5),    
     op2_sel   = Bits(5),    
     
-    is_write  = Bits(1),      # 是否是 Store 指令
     is_branch = Bits(1),      # 是否是 Branch 指令
     is_jtype = Bits(1),       # 是否是直接跳转指令
     is_jalr = Bits(1),        # 是否是 JALR 指令
@@ -108,38 +107,28 @@ def build(self,
 根据 ID 阶段预计算好的独热码 `op_sel`，在多种可能的数据源中选择 ALU 的输入。
 
 ```python
+    # --- rs1 旁路处理 ---
+    real_rs1 = ctrl.rs1_sel.select1hot (
+        rs1, fwd_from_mem, fwd_from_wb
+    )
+
+    # --- rs2 旁路处理 ---
+    real_rs2 = ctrl.op2_sel.select1hot(
+        rs2, Bits(32)(0), fwd_from_mem, fwd_from_wb, Bits(32)(0)
+    )
+
     # --- 操作数 1 选择 ---
-    # 0: RS1, 1: PC, 2: MEM_Fwd, 3: WB_Fwd
     alu_op1 = ctrl.op1_sel.select1hot(
-        rs1,            # 0
+        real_rs1,            # 0
         pc,             # 1 (AUIPC/JAL/Branch)
-        fwd_from_mem,   # 2 (Bypass)
-        fwd_from_wb     # 3 (Bypass)
+        Bits(32)(0)     # 2 (LUI Link)
     )
 
     # --- 操作数 2 选择 ---
-    # 0: RS2, 1: Imm, 2: MEM_Fwd, 3: WB_Fwd, 4: Const_4
     alu_op2 = ctrl.op2_sel.select1hot(
         rs2,            # 0
         imm,            # 1
-        fwd_from_mem,   # 2 (Bypass)
-        fwd_from_wb,    # 3 (Bypass)
-        Bits(32)(4)     # 4 (JAL/JALR Link)
-    )
-    
-    # 特殊处理 JALR Data (rs1)
-    # JALR 指令需要用 rs1 计算目标地址，这个 rs1 也可能需要 Bypass。
-    real_rs1 = ctrl.op1_sel.select1hot(
-        rs1, rs1, fwd_from_mem, fwd_from_wb
-    )
-
-    # 特殊处理 Store Data (rs2)
-    # Store 指令要写入内存的数据是 rs2。这个 rs2 也可能需要 Bypass。
-    # op2_sel 已经考虑了 Store 的情况，
-    # 通常 Store 的 ALU 计算是 rs1+imm，而 rs2 是独立的数据通路。
-    # 复用 alu_op2 的旁路逻辑来获取最新的 rs2 值：
-    real_rs2 = ctrl.op2_sel.select1hot(
-        rs2, Bits(32)(0), fwd_from_mem, fwd_from_wb, Bits(32)(0)
+        Bits(32)(4)     # 2 (JAL/JALR Link)
     )
 ```
 
@@ -196,10 +185,6 @@ def build(self,
 *   `is_jalr` (1-bit): 控制 PC Adder 的第一个操作数。
     *   `0`: 选择 `PC` (用于 Branch, JAL)
     *   `1`: 选择 `rs1` (用于JALR)
-
----
-
-### 3. 代码实现 (Execution.build)
 
 ```python
   # 假设已完成 Forwarding，拿到了 real_rs1, real_rs2, imm, pc

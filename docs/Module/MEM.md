@@ -59,7 +59,7 @@ def build(self,
     ctrl, alu_result = self.pop_all_ports(False)
     
     # 提取需要的控制信号
-    is_load = ctrl.is_load
+    mem_opcode = ctrl.mem_opcode
     mem_width = ctrl.mem_width
     mem_unsigned = ctrl.mem_unsigned
 ```
@@ -122,6 +122,7 @@ def build(self,
 ```python
     # 如果是 Load 指令，用加工后的内存数据
     # 否则 (ALU运算/JAL/LUI)，用 EX 传下来的 alu_result
+    is_load = ctrl.mem_opcode == MemOpcode.LOAD
     final_data = is_load.select(processed_mem_result, alu_result)
 ```
 

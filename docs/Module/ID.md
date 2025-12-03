@@ -9,9 +9,46 @@ ID 模块是流水线的**控制中心**。它的核心职责是将从取指阶�
 
 该设计采用 **解耦（Decoupled）** 思想，将复杂的指令解析逻辑收敛在 ID 阶段，向后传递正交化的控制信号包，并采用嵌套 Record 结构实现信号在流水线各级的逐层剥离。
 
-## 2. 接口定义
+## 2. 数据结构：控制信号包 (Control Packets)
 
-### 2.1 类定义与端口 (`__init__`)
+采用 **嵌套 Record** 结构，实现控制信号的分层管理。以下定义置于 `control_signals.py`。
+
+### 2.1 写回域 (`WbCtrl`)
+```python
+wb_ctrl_signals = Record(
+    rd_addr    = Bits(5)   # 目标寄存器索引，如果是0拒绝写入。
+)
+```
+
+### 2.2 访存域 (`MemCtrl`)
+```python
+mem_ctrl_signals = Record(
+    mem_opcode   = Bits(3), # 内存操作，独热码 (0:None, 1:Load, 2:Store)
+    mem_width    = Bits(3), # 访问宽度，独热码 (0:Byte, 1:Half, 2:Word)
+    mem_unsigned = Bits(1), # 是否无符号扩展 (LBU/LHU)
+    wb_ctrl      = wb_ctrl_signals # 【嵌套】携带 WB 级信号
+)
+```
+
+### 2.3 执行域 (`ExCtrl`)
+```python
+ex_ctrl_signals = Record(
+    alu_func = Bits(16),   # ALU 功能码 (独热码)
+    rs1_sel  = Bits(3),    # rs1结果来源，独热码 (0:RS1, 1:EX_MEM_Fwd, 2: MEM_WB_Fwd)
+    rs2_sel  = Bits(3),    # rs2结果来源，独热码 (0:RS1, 1:EX_MEM_Fwd, 2: MEM_WB_Fwd)
+    op1_sel  = Bits(3),    # 操作数1来源，独热码 (0:RS1, 1:PC, 2: Constant_0)
+    op2_sel  = Bits(3),    # 操作数2来源，独热码 (0:RS2, 1:imm, 2: Constant_4)
+    is_branch = Bits(1),    # 是否跳转 (Branch 指令)
+    is_jtype = Bits(1),     # 是否直接跳转 (JAL/JALR 指令)
+    is_jalr  = Bits(1),     # 是否是 JALR 指令
+    next_pc_addr = Bits(32),  # 预测结果：下一条指令的地址
+    mem_ctrl = mem_ctrl_signals  # 【嵌套】携带 MEM 级信号
+)
+```
+
+## 3. 接口定义
+
+### 3.1 类定义与端口 (`__init__`)
 
 ID 模块作为标准的 `Module`，通过端口接收来自 IF 阶段的流式数据（主要是 PC，指令通常通过共享 SRAM 接口获取）。
 
@@ -27,7 +64,7 @@ class Decoder(Module):
         self.name = 'ID'
 ```
 
-### 2.2 构建参数 (`build`)
+### 3.2 构建参数 (`build`)
 
 `build` 函数描述了 ID 模块与其他组件的物理连接。
 
@@ -35,48 +72,13 @@ class Decoder(Module):
 | :-------------- | :----------- | :-------------------------------------------------- |
 | **executor**    | `Module`     | 下一级流水线（EX），用于发送打包好的控制/数据包。   |
 | **hazard_unit** | `Downstream` | 数据冒险检测单元，用于处理 Stall 和记分牌更新。     |
-| **icache_data** | `Array`   | SRAM (ICache) 的输出端口 (`dout`)，即原始指令数据。 |
-| **reg_file**    | `Array`   | 通用寄存器堆，用于读取 `rs1` 和 `rs2` 的源数据。    |
+| **icache_data** | `Array`      | SRAM (ICache) 的输出端口 (`dout`)，即原始指令数据。 |
+| **reg_file**    | `Array`      | 通用寄存器堆，用于读取 `rs1` 和 `rs2` 的源数据。    |
 
 ```python
 @module.combinational
 def build(self, executor: Module, hazard_unit: Downstream, icache_data: Array, reg_file: Array):
     # 实现逻辑见下文
-```
-
----
-
-## 3. 数据结构：控制信号包 (Control Packets)
-
-采用 **嵌套 Record** 结构，实现控制信号的分层管理。以下定义置于 `control_signals.py`。
-
-### 3.1 写回域 (`WbCtrl`)
-```python
-wb_ctrl_signals = Record(
-    rd_addr    = Bits(5)   # 目标寄存器索引，如果是0拒绝写入。
-)
-```
-
-### 3.2 访存域 (`MemCtrl`)
-```python
-mem_ctrl_signals = Record(
-    is_load      = Bits(1), # 是否读内存
-    mem_width    = Bits(3), # 访问宽度，独热码 (0:Byte, 1:Half, 2:Word)
-    mem_unsigned = Bits(1), # 是否无符号扩展 (LBU/LHU)
-    wb_ctrl      = wb_ctrl_signals # 【嵌套】携带 WB 级信号
-)
-```
-
-### 3.3 执行域 (`ExCtrl`)
-```python
-ex_ctrl_signals = Record(
-    alu_func = Bits(16),   # ALU 功能码 (独热码)
-    op1_sel  = Bits(4),    # 操作数1来源，独热码 (0:RS1, 1:PC, 2: exe_bypass_reg, 3: mem_bypass_reg)
-    op2_sel  = Bits(5),    # 操作数2来源，独热码 (0:RS2, 1:imm, 2: exe_bypass_reg, 3: mem_bypass_reg, 4: Constant_4)
-    is_write = Bits(1),    # 是否写入SRAM (Store 指令)
-    is_branch= Bits(1),    # 是否跳转 (Branch 指令)
-    mem_ctrl = mem_ctrl_signals  # 【嵌套】携带 MEM 级信号
-)
 ```
 
 ## 4. 内部实现逻辑 (`build` 流程)
@@ -109,16 +111,16 @@ imm_i, imm_s, imm_b, imm_u, imm_j = gen_all_immediates(inst)
 ```python
 # 初始化累加器 (默认全 0)
 alu_func_acc  = Bits(16)(0)
-op1_sel_acc   = Bits(4)(0) # 独热码
-op2_sel_acc   = Bits(5)(0) # 独热码
+op1_sel_acc   = Bits(3)(0) # 独热码
+op2_sel_acc   = Bits(3)(0) # 独热码
 imm_val_acc   = Bits(32)(0)
 is_load_acc   = Bits(1)(0)
 # ... 其他信号 ...
 
 # 遍历真值表
 for entry in instructions_table:
-    # A. 匹配逻辑 (包含对 shift 特殊位的处理)
-    # 如果 entry 指定了 func7_bit30，也要纳入匹配
+    # A. 匹配逻辑
+    # 依次进行 Opcode, Funct3, Bit30 的匹配
     match = (opcode == entry.op) & ... 
     
     # B. 信号累加 (你的核心思路)
@@ -158,8 +160,10 @@ packet_valid = ~stall_req
 ex_ctrl_payload = ex_ctrl_signals.bundle(
     # 语义控制
     alu_func = alu_func_acc,
-    op1_sel = fwd_op1,
-    op2_sel = fwd_op2,
+    rs1_sel = fwd_op1,
+    rs2_sel = fwd_op2,
+    op1_sel = op1_sel_acc,
+    op2_sel = op2_sel_acc,
     
     # 下级控制
     mem_ctrl = ...
@@ -173,4 +177,192 @@ executor.async_called(
     rs2_data = reg_file[rs2],
     imm  = imm_val_acc
 )
+```
+
+## 指令表详细定义
+
+> 助记符定义应当放置在`control_signals.py`中，指令真值表放置在`instructions_table.py`中。与`ID.py`同级目录，以形成逻辑分离。
+
+### 第一部分：助记符与控制信号定义 (`control_signals.py`)
+
+这里定义了所有控制信号的枚举值，对应于 `ex_ctrl_signals` 和 `mem_ctrl_signals` 中的位宽定义。
+
+```python
+from assassyn.frontend import Bits
+
+# 1. 基础物理常量
+# 指令 Opcode (7-bit)
+OP_R_TYPE   = Bits(7)(0b0110011) # ADD, SUB...
+OP_I_TYPE   = Bits(7)(0b0010011) # ADDI...
+OP_LOAD     = Bits(7)(0b0000011) # LB, LW...
+OP_STORE    = Bits(7)(0b0100011) # SB, SW...
+OP_BRANCH   = Bits(7)(0b1100011) # BEQ...
+OP_JAL      = Bits(7)(0b1101111)
+OP_JALR     = Bits(7)(0b1100111)
+OP_LUI      = Bits(7)(0b0110111)
+OP_AUIPC    = Bits(7)(0b0010111)
+OP_SYSTEM   = Bits(7)(0b1110011) # ECALL, EBREAK
+
+# 立即数类型 (用于生成器选择切片逻辑)
+class ImmType:
+    R = 0 # 无立即数
+    I = 1
+    S = 2
+    B = 3
+    U = 4
+    J = 5
+
+# 2. 执行阶段控制信号 (EX Control)
+# ALU 功能码 (One-hot 映射, 假设 Bits(16))
+# 顺序对应 alu_func[i]
+class ALUOp:
+    ADD  = 0
+    SUB  = 1
+    SLL  = 2
+    SLT  = 3
+    SLTU = 4
+    XOR  = 5
+    SRL  = 6
+    SRA  = 7
+    OR   = 8
+    AND  = 9
+    # 占位/直通/特殊用途
+    NOP    = 15
+
+class Rs1Sel:
+    RS1        = 0
+    EX_MEM_BYPASS = 1
+    MEM_WB_BYPASS = 2
+
+class Rs2Sel:
+    RS2 = 0
+    EX_MEM_BYPASS = 1
+    MEM_WB_BYPASS = 2
+
+# 操作数 1 选择 (One-hot, Bits(5))
+# 对应: real_rs1, pc, 0
+class Op1Sel:
+    RS1  = 0
+    PC   = 1
+    ZERO = 2
+
+# 操作数 2 选择 (One-hot, Bits(5))
+# 对应: real_rs2, imm, 4
+class Op2Sel:
+    RS2  = 0
+    IMM  = 1
+    CONST_4 = 2
+    EX_MEM_BYPASS = 3
+    MEM_WB_BYPASS = 4
+
+# 3. 访存与写回控制信号 (MEM/WB Control)
+
+# 访存操作 (Bits(3))
+class MemOp:
+    NONE  = 0
+    LOAD  = 1
+    STORE = 2
+
+# 访存宽度 (Bits(3))
+class MemWidth:
+    BYTE = 0
+    HALF = 1
+    WORD = 2
+
+# 符号扩展 (Bits(1))
+class MemSign:
+    SIGNED   = 0
+    UNSIGNED = 1
+
+# 写回使能 (隐式：通过将 RD 设为 0 来禁用写回，这里仅作逻辑标记)
+class WB:
+    YES = 1
+    NO  = 0
+```
+
+### 第二部分：指令真值表 (`instructions_table.py`)
+
+这张表是 Decoder 的核心。它包含了两部分：
+1.  **Check Part (匹配键)**：Opcode, Func3, Func7_Bit30。
+2.  **Info Part (控制值)**：所有后级流水线需要的控制信号。
+
+**特殊说明**：
+*   `Bit30`: 对于 `ADD/SUB` 和 `SRL/SRA`，Opcode 和 Funct3 是一样的，必须检查指令的第 30 位（即 `inst[30]`）。我们用 `0` 或 `1` 表示必须匹配该位，`None` 表示忽略。
+
+```python
+from ctrl_consts import *
+
+# 表格列定义:
+# Key, Opcode, Funct3, Bit30, ImmType | ALU_Func, Rs1, Rs2, Op1, Op2, Mem_Op, Width, Sign, WB, Branch, Jump, Jalr
+
+rv32i_table = [
+    
+    # --- R-Type ---
+    ('add',    OP_R_TYPE, 0x0,  0,    ImmType.R, ALUOp.ADD, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.RS2, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+    ('sub',    OP_R_TYPE, 0x0,  1,    ImmType.R, ALUOp.SUB, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.RS2, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+    ('sll',    OP_R_TYPE, 0x1,  0,    ImmType.R, ALUOp.SLL, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.RS2, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+    ('slt',    OP_R_TYPE, 0x2,  0,    ImmType.R, ALUOp.SLT, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.RS2, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+    ('sltu',   OP_R_TYPE, 0x3,  0,    ImmType.R, ALUOp.SLTU,Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.RS2, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+    ('xor',    OP_R_TYPE, 0x4,  0,    ImmType.R, ALUOp.XOR, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.RS2, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+    ('srl',    OP_R_TYPE, 0x5,  0,    ImmType.R, ALUOp.SRL, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.RS2, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+    ('sra',    OP_R_TYPE, 0x5,  1,    ImmType.R, ALUOp.SRA, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.RS2, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+    ('or',     OP_R_TYPE, 0x6,  0,    ImmType.R, ALUOp.OR,  Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.RS2, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+    ('and',    OP_R_TYPE, 0x7,  0,    ImmType.R, ALUOp.AND, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.RS2, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+
+    # --- I-Type (ALU) ---
+    ('addi',   OP_I_TYPE, 0x0,  None, ImmType.I, ALUOp.ADD, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+    ('slti',   OP_I_TYPE, 0x2,  None, ImmType.I, ALUOp.SLT, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+    ('sltiu',  OP_I_TYPE, 0x3,  None, ImmType.I, ALUOp.SLTU,Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+    ('xori',   OP_I_TYPE, 0x4,  None, ImmType.I, ALUOp.XOR, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+    ('ori',    OP_I_TYPE, 0x6,  None, ImmType.I, ALUOp.OR,  Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+    ('andi',   OP_I_TYPE, 0x7,  None, ImmType.I, ALUOp.AND, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+    # Shift Imm (Bit30 distinguishes Logic/Arith shift)
+    ('slli',   OP_I_TYPE, 0x1,  0,    ImmType.I, ALUOp.SLL, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+    ('srli',   OP_I_TYPE, 0x5,  0,    ImmType.I, ALUOp.SRL, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+    ('srai',   OP_I_TYPE, 0x5,  1,    ImmType.I, ALUOp.SRA, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.NONE,  0, 0, WB.YES, 0, 0, 0),
+
+    # --- I-type (Load) ---
+    # ALU 计算地址 (RS1 + Imm)，Mem 读取
+    ('lb',     OP_LOAD,   0x0,  None, ImmType.I, ALUOp.ADD, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.LOAD,  MemWidth.BYTE, MemSign.SIGNED,   WB.YES, 0, 0, 0),
+    ('lh',     OP_LOAD,   0x1,  None, ImmType.I, ALUOp.ADD, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.LOAD,  MemWidth.HALF, MemSign.SIGNED,   WB.YES, 0, 0, 0),
+    ('lw',     OP_LOAD,   0x2,  None, ImmType.I, ALUOp.ADD, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.LOAD,  MemWidth.WORD, MemSign.SIGNED,   WB.YES, 0, 0, 0),
+    ('lbu',    OP_LOAD,   0x4,  None, ImmType.I, ALUOp.ADD, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.LOAD,  MemWidth.BYTE, MemSign.UNSIGNED, WB.YES, 0, 0, 0),
+    ('lhu',    OP_LOAD,   0x5,  None, ImmType.I, ALUOp.ADD, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.LOAD,  MemWidth.HALF, MemSign.UNSIGNED, WB.YES, 0, 0, 0),
+
+    # --- S-type (Store) ---
+    # ALU 计算地址 (RS1 + Imm)，Mem 写入
+    ('sb',     OP_STORE,  0x0,  None, ImmType.S, ALUOp.ADD, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.STORE, MemWidth.BYTE, 0, WB.NO,  0, 0, 0),
+    ('sh',     OP_STORE,  0x1,  None, ImmType.S, ALUOp.ADD, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.STORE, MemWidth.HALF, 0, WB.NO,  0, 0, 0),
+    ('sw',     OP_STORE,  0x2,  None, ImmType.S, ALUOp.ADD, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.STORE, MemWidth.WORD, 0, WB.NO,  0, 0, 0),
+
+    # --- Branch ---
+    # ALU 做比较 (Sub/Cmp)，PC Adder 算目标 (PC+Imm)，不写回
+    ('beq',    OP_BRANCH, 0x0,  None, ImmType.B, ALUOp.SUB, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.RS2, MemOp.NONE, 0, 0, WB.NO, 1, 0, 0),
+    ('bne',    OP_BRANCH, 0x1,  None, ImmType.B, ALUOp.SUB, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.RS2, MemOp.NONE, 0, 0, WB.NO, 1, 0, 0),
+    ('blt',    OP_BRANCH, 0x4,  None, ImmType.B, ALUOp.SLT, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.RS2, MemOp.NONE, 0, 0, WB.NO, 1, 0, 0),
+    ('bge',    OP_BRANCH, 0x5,  None, ImmType.B, ALUOp.SLT, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.RS2, MemOp.NONE, 0, 0, WB.NO, 1, 0, 0),
+    ('bltu',   OP_BRANCH, 0x6,  None, ImmType.B, ALUOp.SLTU,Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.RS2, MemOp.NONE, 0, 0, WB.NO, 1, 0, 0),
+    ('bgeu',   OP_BRANCH, 0x7,  None, ImmType.B, ALUOp.SLTU,Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.RS2, MemOp.NONE, 0, 0, WB.NO, 1, 0, 0),
+
+    # --- JAL ---
+    # ALU: PC + 4 (Link Data -> WB)
+    # Tgt: PC + Imm (Jump Target -> IF)
+    ('jal',    OP_JAL,    None, None, ImmType.J, ALUOp.ADD, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.PC,  Op2Sel.CONST_4, MemOp.NONE, 0, 0, WB.YES, 1, 1, 0),
+
+    # --- JALR ---
+    # ALU: PC + 4 (Link Data -> WB)
+    # Tgt: RS1 + Imm (Jump Target -> IF)
+    ('jalr',   OP_JALR,   None,  None, ImmType.I, ALUOp.ADD, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.PC,  Op2Sel.CONST_4, MemOp.NONE, 0, 0, WB.YES, 1, 1, 1),
+
+    # --- U-Type ---
+    # LUI:   ALU 算 0 + Imm
+    ('lui',    OP_LUI,    None, None, ImmType.U, ALUOp.ADD, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.CONST_0, Op2Sel.IMM, MemOp.NONE, 0, 0, WB.YES, 0, 0),
+    # AUIPC: ALU 算 PC + Imm
+    ('auipc',  OP_AUIPC,  None, None, ImmType.U, ALUOp.ADD, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.PC,  Op2Sel.IMM, MemOp.NONE, 0, 0, WB.YES, 0, 0),
+
+    # --- Environment (ECALL/EBREAK) ---
+    # 作为特殊 I-Type 处理，但这里只给基本信号，具体逻辑由 Decoder/Execution 中的 finish() 逻辑拦截，直接停止模拟。
+    ('ecall',  OP_SYSTEM, 0x0,  None, ImmType.I, ALUOp.NOP, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.NONE, 0, 0, WB.NO, 0, 0),
+    ('ebreak', OP_SYSTEM, 0x0,  None, ImmType.I, ALUOp.NOP, Rs1Sel.RS1, Rs2Sel.RS2, Op1Sel.RS1, Op2Sel.IMM, MemOp.NONE, 0, 0, WB.NO, 0, 0),
+]
 ```
