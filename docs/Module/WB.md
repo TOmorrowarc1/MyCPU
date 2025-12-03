@@ -14,8 +14,9 @@ WB 阶段使用的控制包是嵌套结构的最内层。
 # control_signals.py
 
 wb_ctrl_t = Record(
-    # 对于 Store, Branch 等不需要写回的指令，Decoder 保证 rd_addr == 0
     rd_addr = Bits(5)
+    # 用于判定是否写回，同时 Record 要求至少有两个对象
+    is_wb = Bits(1)
 )
 ```
 
@@ -63,7 +64,7 @@ def build(self, reg_file: Array):
     # 2. 写入逻辑 (Write Logic)
     # 物理含义：生成寄存器堆的 Write Enable 信号
     # 只有当目标寄存器不是 x0 时，才允许写入
-    with Condition(rd != 0):
+    with Condition(is_wb != Bits(1)(0)):
         # 调试日志：打印写回操作
         log("WB: Write x{} <= 0x{:x}", rd, wdata)
         

@@ -187,6 +187,10 @@ apptainer exec --bind $(pwd) /assassyn.sif python tests/test_fetch.py
 
 请按以下顺序执行开发，**每完成一步，必须生成对应的测试代码并验证**。
 
+### Phase 0: 请读取语言的基本逻辑 [Assassyn 文档](MyCPU/docs/Assassyn.md)
+
+重点关注时序，连接等内容。
+
 ### Phase 1: 基础设施 (Infrastructure)
 1.  **定义常量 (`src/consts.py`)**：根据设计文档，定义 `ALUOp`, `Op1Sel`, `ImmType` 等。
 2.  **定义接口 (`src/interfaces.py`)**：实现 `wb_ctrl_t` -> `mem_ctrl_t` -> `ex_ctrl_t` -> `decode_packet_t` 的嵌套 Record 结构。
