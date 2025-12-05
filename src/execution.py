@@ -122,6 +122,12 @@ class Execution(Module):
         # 3. 驱动本级 Bypass 寄存器 (向 ID 级提供数据)
         # 这样下一拍 ID 级就能看到这条指令的结果了
         ex_mem_bypass[0] = alu_result
+        
+        # 输出ALU结果日志
+        log("EX: ALU Result: 0x{:x}", alu_result)
+        
+        # 输出旁路寄存器更新日志
+        log("EX: Bypass Update: 0x{:x}", alu_result)
 
         # --- 访存操作 (Store Handling) ---
         # 仅在 is_write (Store) 为真时驱动 SRAM 的 WE
@@ -161,6 +167,26 @@ class Execution(Module):
             | (ctrl.branch_type == BranchType.BLTU)
             | (ctrl.branch_type == BranchType.BGEU)
         )
+        
+        # 输出分支类型日志
+        with Condition(ctrl.branch_type == BranchType.BEQ):
+            log("EX: Branch Type: BEQ")
+        with Condition(ctrl.branch_type == BranchType.BNE):
+            log("EX: Branch Type: BNE")
+        with Condition(ctrl.branch_type == BranchType.BLT):
+            log("EX: Branch Type: BLT")
+        with Condition(ctrl.branch_type == BranchType.BGE):
+            log("EX: Branch Type: BGE")
+        with Condition(ctrl.branch_type == BranchType.BLTU):
+            log("EX: Branch Type: BLTU")
+        with Condition(ctrl.branch_type == BranchType.BGEU):
+            log("EX: Branch Type: BGEU")
+        with Condition(ctrl.branch_type == BranchType.JAL):
+            log("EX: Branch Type: JAL")
+        with Condition(ctrl.branch_type == BranchType.JALR):
+            log("EX: Branch Type: JALR")
+        with Condition(ctrl.branch_type == BranchType.NO_BRANCH):
+            log("EX: Branch Type: NO_BRANCH")
 
         with Condition(is_branch):
             # 根据不同的分支类型判断分支条件
@@ -214,6 +240,11 @@ class Execution(Module):
             final_next_pc,  # 跳转，写入目标地址
             Bits(32)(0),  # 不跳转，写 0 表示顺序执行
         )
+        
+        # 输出分支目标和分支是否跳转的日志
+        with Condition(is_branch_or_jump):
+            log("EX: Branch Target: 0x{:x}", calc_target)
+            log("EX: Branch Taken: {}", is_taken == Bits(1)(1))
 
         # --- 下一级绑定与状态反馈 ---
         # 构造发送给 MEM 的包
