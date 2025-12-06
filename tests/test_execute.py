@@ -9,10 +9,8 @@ from assassyn.frontend import *
 
 # 导入你的设计
 from src.execution import Execution
-from src.memory import MemoryAccess
 from src.control_signals import *
 from tests.common import run_test_module
-from tests.sram_init import create_initialized_sram
 
 
 # ==============================================================================
@@ -29,11 +27,12 @@ class Driver(Module):
         mem_module: Module,
         ex_mem_bypass: Array,
         mem_wb_bypass: Array,
+        wb_bypass: Array,
         branch_target_reg: Array,
     ):
         # --- 测试向量定义 ---
         # 格式: (alu_func, rs1_sel, rs2_sel, op1_sel, op2_sel, branch_type,
-        #       next_pc_addr, pc, rs1_data, rs2_data, imm, ex_mem_fwd, mem_wb_fwd, expected_result)
+        #       next_pc_addr, pc, rs1_data, rs2_data, imm, ex_mem_fwd, mem_wb_fwd, wb_fwd, expected_result)
         #
         # alu_func: ALU功能码 (独热码)
         # rs1_sel/rs2_sel: 数据来源选择 (独热码)
@@ -45,6 +44,7 @@ class Driver(Module):
         # imm: 立即数
         # ex_mem_fwd: EX-MEM旁路数据
         # mem_wb_fwd: MEM-WB旁路数据
+        # wb_fwd: WB旁路数据
         # expected_result: 预期的ALU结果
 
         vectors = [
@@ -237,8 +237,112 @@ class Driver(Module):
                 Bits(32)(200),
                 Bits(32)(220),
             ),
+            # --- WB旁路测试 ---
+            # Case 11: 使用WB_BYPASS的ADD指令
+            (
+                ALUOp.ADD,
+                Rs1Sel.WB_BYPASS,
+                Rs2Sel.RS2,
+                Op1Sel.RS1,
+                Op2Sel.RS2,
+                BranchType.NO_BRANCH,
+                Bits(32)(0x1004),
+                Bits(32)(0x1000),
+                Bits(32)(10),
+                Bits(32)(20),
+                Bits(32)(0),
+                Bits(32)(0),
+                Bits(32)(300),
+                Bits(32)(320),
+            ),
+            # Case 12: 使用WB_BYPASS的SUB指令
+            (
+                ALUOp.SUB,
+                Rs1Sel.WB_BYPASS,
+                Rs2Sel.RS2,
+                Op1Sel.RS1,
+                Op2Sel.RS2,
+                BranchType.NO_BRANCH,
+                Bits(32)(0x1004),
+                Bits(32)(0x1000),
+                Bits(32)(20),
+                Bits(32)(10),
+                Bits(32)(0),
+                Bits(32)(0),
+                Bits(32)(300),
+                Bits(32)(290),
+            ),
+            # Case 13: 使用WB_BYPASS的AND指令
+            (
+                ALUOp.AND,
+                Rs1Sel.WB_BYPASS,
+                Rs2Sel.RS2,
+                Op1Sel.RS1,
+                Op2Sel.RS2,
+                BranchType.NO_BRANCH,
+                Bits(32)(0x1004),
+                Bits(32)(0x1000),
+                Bits(32)(0xF0F0F0F0),
+                Bits(32)(0x0F0F0F0F),
+                Bits(32)(0),
+                Bits(32)(0),
+                Bits(32)(0x12345678),
+                Bits(32)(0x12345678 & 0x0F0F0F0F),
+            ),
+            # Case 14: 使用WB_BYPASS的OR指令
+            (
+                ALUOp.OR,
+                Rs1Sel.WB_BYPASS,
+                Rs2Sel.RS2,
+                Op1Sel.RS1,
+                Op2Sel.RS2,
+                BranchType.NO_BRANCH,
+                Bits(32)(0x1004),
+                Bits(32)(0x1000),
+                Bits(32)(0xF0F0F0F0),
+                Bits(32)(0x0F0F0F0F),
+                Bits(32)(0),
+                Bits(32)(0),
+                Bits(32)(0x12345678),
+                Bits(32)(0x12345678 | 0x0F0F0F0F),
+            ),
+            # --- 旁路对比测试 ---
+            # Case 15: 对比三种旁路 - ADD指令
+            (
+                ALUOp.ADD,
+                Rs1Sel.EX_MEM_BYPASS,
+                Rs2Sel.WB_BYPASS,
+                Op1Sel.RS1,
+                Op2Sel.RS2,
+                BranchType.NO_BRANCH,
+                Bits(32)(0x1004),
+                Bits(32)(0x1000),
+                Bits(32)(10),
+                Bits(32)(20),
+                Bits(32)(0),
+                Bits(32)(100),
+                Bits(32)(200),
+                Bits(32)(300),
+            ),
+            # Case 16: 对比三种旁路 - SUB指令
+            (
+                ALUOp.SUB,
+                Rs1Sel.MEM_WB_BYPASS,
+                Rs2Sel.WB_BYPASS,
+                Op1Sel.RS1,
+                Op2Sel.RS2,
+                BranchType.NO_BRANCH,
+                Bits(32)(0x1004),
+                Bits(32)(0x1000),
+                Bits(32)(200),
+                Bits(32)(100),
+                Bits(32)(0),
+                Bits(32)(200),
+                Bits(32)(100),
+                Bits(32)(100),
+            ),
             # --- 分支指令测试 ---
-            # Case 11: BEQ (相等分支)
+            # Case 17: BEQ (相等分支)
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -255,7 +359,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0),
             ),  # 10-10=0，BEQ条件成立
-            # Case 12: BNE (不等分支)
+            # Case 18: BNE (不等分支)
             (
                 ALUOp.SUB,
                 Rs1Sel.RS1,
@@ -272,7 +376,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0xFFFFFFFE),
             ),  # 10-20=-10≠0，BNE条件成立
-            # Case 13: BLT (小于分支)
+            # Case 19: BLT (小于分支)
             (
                 ALUOp.SLT,
                 Rs1Sel.RS1,
@@ -289,7 +393,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(1),
             ),  # 5<10，BLT条件成立
-            # Case 14: BGE (大于等于分支)
+            # Case 20: BGE (大于等于分支)
             (
                 ALUOp.SLTU,
                 Rs1Sel.RS1,
@@ -307,7 +411,7 @@ class Driver(Module):
                 Bits(32)(0),
             ),  # 10>=5，BGE条件成立
             # --- JAL/JALR 指令测试 ---
-            # Case 15: JAL (直接跳转)
+            # Case 21: JAL (直接跳转)
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -324,7 +428,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0x1004),
             ),  # PC+4=0x1004
-            # Case 16: JALR (间接跳转)
+            # Case 22: JALR (间接跳转)
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -342,7 +446,7 @@ class Driver(Module):
                 Bits(32)(0x1004),
             ),  # PC+4=0x1004，但跳转到0x2008
             # --- 更多分支指令测试 ---
-            # Case 17: BEQ (不相等分支，不跳转)
+            # Case 23: BEQ (不相等分支，不跳转)
             (
                 ALUOp.SUB,
                 Rs1Sel.RS1,
@@ -359,7 +463,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0xFFFFFFFE),
             ),  # 10-20=-10≠0，BEQ条件不成立
-            # Case 18: BNE (相等分支，不跳转)
+            # Case 24: BNE (相等分支，不跳转)
             (
                 ALUOp.SUB,
                 Rs1Sel.RS1,
@@ -376,7 +480,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0),
             ),  # 10-10=0，BNE条件不成立
-            # Case 19: BLT (不小于分支，不跳转)
+            # Case 25: BLT (不小于分支，不跳转)
             (
                 ALUOp.SLT,
                 Rs1Sel.RS1,
@@ -393,7 +497,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0),
             ),  # 10>=5，BLT条件不成立
-            # Case 20: BGE (小于分支，不跳转)
+            # Case 26: BGE (小于分支，不跳转)
             (
                 ALUOp.SLTU,
                 Rs1Sel.RS1,
@@ -410,7 +514,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(1),
             ),  # 5<10，BGE条件不成立
-            # Case 21: BLTU (无符号不小于分支，不跳转)
+            # Case 27: BLTU (无符号不小于分支，不跳转)
             (
                 ALUOp.SLTU,
                 Rs1Sel.RS1,
@@ -427,7 +531,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0),
             ),  # 10>=5，BLTU条件不成立
-            # Case 22: BGEU (无符号小于分支，不跳转)
+            # Case 28: BGEU (无符号小于分支，不跳转)
             (
                 ALUOp.SLTU,
                 Rs1Sel.RS1,
@@ -445,7 +549,7 @@ class Driver(Module):
                 Bits(32)(1),
             ),  # 5<10，BGEU条件不成立
             # --- Store 指令测试 ---
-            # Case 23: SW (Store Word) - 存储数据到地址0x1000
+            # Case 29: SW (Store Word) - 存储数据到地址0x1000
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -462,7 +566,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0x1004),
             ),  # 地址=0x1000, 数据=0x12345678
-            # Case 24: SW (Store Word) - 存储数据到地址0x1004
+            # Case 30: SW (Store Word) - 存储数据到地址0x1004
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -479,7 +583,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0x1008),
             ),  # 地址=0x1004, 数据=0xABCDEF00
-            # Case 25: SW (Store Word) - 存储数据到地址0x1008
+            # Case 31: SW (Store Word) - 存储数据到地址0x1008
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -497,7 +601,7 @@ class Driver(Module):
                 Bits(32)(0x100C),
             ),  # 地址=0x1008, 数据=0x11223344
             # --- Load 指令测试 ---
-            # Case 26: LW (Load Word) - 从地址0x1000加载数据
+            # Case 32: LW (Load Word) - 从地址0x1000加载数据
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -514,7 +618,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0x1004),
             ),  # 地址=0x1000, 预期加载0x12345678
-            # Case 27: LW (Load Word) - 从地址0x1004加载数据
+            # Case 33: LW (Load Word) - 从地址0x1004加载数据
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -531,7 +635,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0x1008),
             ),  # 地址=0x1004, 预期加载0xABCDEF00
-            # Case 28: LW (Load Word) - 从地址0x1008加载数据
+            # Case 34: LW (Load Word) - 从地址0x1008加载数据
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -549,7 +653,7 @@ class Driver(Module):
                 Bits(32)(0x100C),
             ),  # 地址=0x1008, 预期加载0x11223344
             # --- 地址对齐测试 ---
-            # Case 29: SW (Store Word) - 未对齐地址访问
+            # Case 35: SW (Store Word) - 未对齐地址访问
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -566,7 +670,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0x1004),
             ),  # 未对齐地址=0x1001
-            # Case 30: LW (Load Word) - 未对齐地址访问
+            # Case 36: LW (Load Word) - 未对齐地址访问
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -584,7 +688,7 @@ class Driver(Module):
                 Bits(32)(0x1004),
             ),  # 未对齐地址=0x1003
             # --- 不同宽度的Store指令测试 ---
-            # Case 31: SH (Store Half) - 存储半字到地址0x1010
+            # Case 37: SH (Store Half) - 存储半字到地址0x1010
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -601,7 +705,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0x1014),
             ),  # 地址=0x1010, 数据=0xABCD
-            # Case 32: SB (Store Byte) - 存储字节到地址0x1011
+            # Case 38: SB (Store Byte) - 存储字节到地址0x1011
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -619,7 +723,7 @@ class Driver(Module):
                 Bits(32)(0x1014),
             ),  # 地址=0x1011, 数据=0xEF
             # --- 不同宽度的Load指令测试 ---
-            # Case 33: LH (Load Half) - 从地址0x1010加载半字（有符号）
+            # Case 39: LH (Load Half) - 从地址0x1010加载半字（有符号）
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -636,7 +740,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0x1014),
             ),  # 地址=0x1010, 预期加载0xABCD
-            # Case 34: LHU (Load Half Unsigned) - 从地址0x1010加载半字（无符号）
+            # Case 40: LHU (Load Half Unsigned) - 从地址0x1010加载半字（无符号）
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -653,7 +757,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0x1014),
             ),  # 地址=0x1010, 预期加载0x0000ABCD
-            # Case 35: LB (Load Byte) - 从地址0x1011加载字节（有符号）
+            # Case 41: LB (Load Byte) - 从地址0x1011加载字节（有符号）
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -670,7 +774,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0x1014),
             ),  # 地址=0x1011, 预期加载0xFFFFFFEF
-            # Case 36: LBU (Load Byte Unsigned) - 从地址0x1011加载字节（无符号）
+            # Case 42: LBU (Load Byte Unsigned) - 从地址0x1011加载字节（无符号）
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -688,7 +792,7 @@ class Driver(Module):
                 Bits(32)(0x1014),
             ),  # 地址=0x1011, 预期加载0x000000EF
             # --- 混合宽度测试 ---
-            # Case 37: SW + SH + SB - 连续存储不同宽度的数据
+            # Case 43: SW + SH + SB - 连续存储不同宽度的数据
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -705,7 +809,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0x1024),
             ),  # 地址=0x1020, 数据=0x12345678
-            # Case 38: 从0x1020读取字，验证之前存储的数据
+            # Case 44: 从0x1020读取字，验证之前存储的数据
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -723,7 +827,7 @@ class Driver(Module):
                 Bits(32)(0x1024),
             ),  # 地址=0x1020, 预期加载0x12345678
             # --- 半字和字节未对齐测试 ---
-            # Case 39: SH (Store Half) - 未对齐地址访问
+            # Case 45: SH (Store Half) - 未对齐地址访问
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -740,7 +844,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0x1024),
             ),  # 未对齐地址=0x1021
-            # Case 40: LH (Load Half) - 未对齐地址访问
+            # Case 46: LH (Load Half) - 未对齐地址访问
             (
                 ALUOp.ADD,
                 Rs1Sel.RS1,
@@ -766,11 +870,18 @@ class Driver(Module):
 
         idx = cnt[0]
 
-        # 2. 组合逻辑 Mux：根据 idx 选择当前的测试向量
+        # 2. 创建EX阶段输入寄存器
+        ex_ctrl_reg = RegArray(Bits(32), 1)  # 存储控制信号
+        pc_reg = RegArray(Bits(32), 1)  # 存储PC值
+        rs1_data_reg = RegArray(Bits(32), 1)  # 存储rs1数据
+        rs2_data_reg = RegArray(Bits(32), 1)  # 存储rs2数据
+        imm_reg = RegArray(Bits(32), 1)  # 存储立即数
+
+        # 3. 组合逻辑 Mux：根据 idx 选择当前的测试向量
         # 初始化默认值
         current_alu_func = Bits(16)(0)
-        current_rs1_sel = Bits(3)(0)
-        current_rs2_sel = Bits(3)(0)
+        current_rs1_sel = Bits(4)(0)
+        current_rs2_sel = Bits(4)(0)
         current_op1_sel = Bits(3)(0)
         current_op2_sel = Bits(3)(0)
         current_branch_type = Bits(16)(0)
@@ -781,6 +892,7 @@ class Driver(Module):
         current_imm = Bits(32)(0)
         current_ex_mem_fwd = Bits(32)(0)
         current_mem_wb_fwd = Bits(32)(0)
+        current_wb_fwd = Bits(32)(0)
         current_expected = Bits(32)(0)
 
         # 这里的循环展开会生成一棵 Mux 树
@@ -798,6 +910,7 @@ class Driver(Module):
             imm,
             ex_mem_fwd,
             mem_wb_fwd,
+            wb_fwd,
             expected,
         ) in enumerate(vectors):
             is_match = idx == UInt(32)(i)
@@ -815,9 +928,10 @@ class Driver(Module):
             current_imm = is_match.select(imm, current_imm)
             current_ex_mem_fwd = is_match.select(ex_mem_fwd, current_ex_mem_fwd)
             current_mem_wb_fwd = is_match.select(mem_wb_fwd, current_mem_wb_fwd)
+            current_wb_fwd = is_match.select(wb_fwd, current_wb_fwd)
             current_expected = is_match.select(expected, current_expected)
 
-        # 3. 构建控制信号包
+        # 4. 构建控制信号包
         # 首先创建mem_ctrl信号
         # 根据测试用例索引设置不同的内存操作
         mem_opcode = MemOp.NONE  # 默认不进行内存操作
@@ -825,65 +939,65 @@ class Driver(Module):
         mem_unsigned = MemSign.UNSIGNED  # 默认无符号扩展
 
         # 为Store和Load操作设置内存操作码和宽度
-        with Condition(idx >= UInt(32)(23) & idx < UInt(32)(26)):  # Cases 23-25: SW操作
+        with Condition(idx >= UInt(32)(29) & idx < UInt(32)(32)):  # Cases 29-31: SW操作
             mem_opcode = MemOp.STORE
             mem_width = MemWidth.WORD
 
-        with Condition(idx >= UInt(32)(26) & idx < UInt(32)(29)):  # Cases 26-28: LW操作
+        with Condition(idx >= UInt(32)(32) & idx < UInt(32)(35)):  # Cases 32-34: LW操作
             mem_opcode = MemOp.LOAD
             mem_width = MemWidth.WORD
 
         with Condition(
-            idx >= UInt(32)(29) & idx < UInt(32)(31)
-        ):  # Cases 29-30: 未对齐访问测试
-            mem_opcode = MemOp.STORE if (idx == UInt(32)(29)) else MemOp.LOAD
+            idx >= UInt(32)(35) & idx < UInt(32)(37)
+        ):  # Cases 35-36: 未对齐访问测试
+            mem_opcode = MemOp.STORE if (idx == UInt(32)(35)) else MemOp.LOAD
             mem_width = MemWidth.WORD
 
         # 不同宽度的Store操作
-        with Condition(idx == UInt(32)(31)):  # Case 31: SH操作
+        with Condition(idx == UInt(32)(37)):  # Case 37: SH操作
             mem_opcode = MemOp.STORE
             mem_width = MemWidth.HALF
 
-        with Condition(idx == UInt(32)(32)):  # Case 32: SB操作
+        with Condition(idx == UInt(32)(38)):  # Case 38: SB操作
             mem_opcode = MemOp.STORE
             mem_width = MemWidth.BYTE
 
         # 不同宽度的Load操作
-        with Condition(idx == UInt(32)(33)):  # Case 33: LH操作
+        with Condition(idx == UInt(32)(39)):  # Case 39: LH操作
             mem_opcode = MemOp.LOAD
             mem_width = MemWidth.HALF
             mem_unsigned = MemSign.SIGNED  # 有符号扩展
 
-        with Condition(idx == UInt(32)(34)):  # Case 34: LHU操作
+        with Condition(idx == UInt(32)(40)):  # Case 40: LHU操作
             mem_opcode = MemOp.LOAD
             mem_width = MemWidth.HALF
             mem_unsigned = MemSign.UNSIGNED  # 无符号扩展
 
-        with Condition(idx == UInt(32)(35)):  # Case 35: LB操作
+        with Condition(idx == UInt(32)(41)):  # Case 41: LB操作
             mem_opcode = MemOp.LOAD
             mem_width = MemWidth.BYTE
             mem_unsigned = MemSign.SIGNED  # 有符号扩展
 
-        with Condition(idx == UInt(32)(36)):  # Case 36: LBU操作
+        with Condition(idx == UInt(32)(42)):  # Case 42: LBU操作
             mem_opcode = MemOp.LOAD
             mem_width = MemWidth.BYTE
             mem_unsigned = MemSign.UNSIGNED  # 无符号扩展
 
         # 混合宽度测试
-        with Condition(idx == UInt(32)(37)):  # Case 37: SW操作
+        with Condition(idx == UInt(32)(43)):  # Case 43: SW操作
             mem_opcode = MemOp.STORE
             mem_width = MemWidth.WORD
 
-        with Condition(idx == UInt(32)(38)):  # Case 38: LW操作
+        with Condition(idx == UInt(32)(44)):  # Case 44: LW操作
             mem_opcode = MemOp.LOAD
             mem_width = MemWidth.WORD
 
         # 半字和字节未对齐测试
-        with Condition(idx == UInt(32)(39)):  # Case 39: SH操作
+        with Condition(idx == UInt(32)(45)):  # Case 45: SH操作
             mem_opcode = MemOp.STORE
             mem_width = MemWidth.HALF
 
-        with Condition(idx == UInt(32)(40)):  # Case 40: LH操作
+        with Condition(idx == UInt(32)(46)):  # Case 46: LH操作
             mem_opcode = MemOp.LOAD
             mem_width = MemWidth.HALF
             mem_unsigned = MemSign.SIGNED  # 有符号扩展
@@ -907,18 +1021,27 @@ class Driver(Module):
             mem_ctrl=mem_ctrl,
         )
 
-        # 4. 设置旁路数据
+        # 5. 将测试向量数据写入寄存器
+        # 使用RegArray为每个输入信号创建寄存器
+        ex_ctrl_reg[0] <= ctrl_pkt
+        pc_reg[0] <= current_pc
+        rs1_data_reg[0] <= current_rs1_data
+        rs2_data_reg[0] <= current_rs2_data
+        imm_reg[0] <= current_imm
+
+        # 6. 设置旁路数据
         ex_mem_bypass[0] = current_ex_mem_fwd
         mem_wb_bypass[0] = current_mem_wb_fwd
+        wb_bypass[0] = current_wb_fwd
 
-        # 5. 发送数据
+        # 7. 发送数据到Execution模块
         # 只有当 idx 在向量范围内时才发送 (valid)
         valid_test = idx < UInt(32)(len(vectors))
 
         with Condition(valid_test):
             # 打印 Driver 发出的请求，方便对比调试
             log(
-                "Driver: idx={} alu_func={} rs1_sel={} rs2_sel={} op1_sel={} op2_sel={} branch_type={} pc=0x{:x} rs1=0x{:x} rs2=0x{:x} imm=0x{:x} ex_mem_fwd=0x{:x} mem_wb_fwd=0x{:x} expected=0x{:x}",
+                "Driver: idx={} alu_func={} rs1_sel={} rs2_sel={} op1_sel={} op2_sel={} branch_type={} pc=0x{:x} rs1=0x{:x} rs2=0x{:x} imm=0x{:x} ex_mem_fwd=0x{:x} mem_wb_fwd=0x{:x} wb_fwd=0x{:x} expected=0x{:x}",
                 idx,
                 current_alu_func,
                 current_rs1_sel,
@@ -932,16 +1055,17 @@ class Driver(Module):
                 current_imm,
                 current_ex_mem_fwd,
                 current_mem_wb_fwd,
+                current_wb_fwd,
                 current_expected,
             )
 
-            # 建立连接 (async_called)
+            # 从寄存器读取数据并调用Execution模块
             dut.async_called(
-                ctrl=ctrl_pkt,
-                pc=current_pc,
-                rs1_data=current_rs1_data,
-                rs2_data=current_rs2_data,
-                imm=current_imm,
+                ctrl=ex_ctrl_reg[0],
+                pc=pc_reg[0],
+                rs1_data=rs1_data_reg[0],
+                rs2_data=rs2_data_reg[0],
+                imm=imm_reg[0],
             )
 
         # [关键] 返回 cnt 和预期结果，让它们成为模块的输出
@@ -949,45 +1073,85 @@ class Driver(Module):
 
 
 # ==============================================================================
-# 2. Sink 模块定义：用于接收EX模块的输出
+# 2. Mock 模块定义：用于接收EX模块的输出
 # ==============================================================================
-class Sink(Module):
+class MockSRAM(Downstream):
     def __init__(self):
-        super().__init__(ports={})
+        super().__init__()
 
     @module.combinational
-    def build(self, dut: Module, mem_module: Module):
-        # 创建一个虚拟的SRAM用于测试
-        sram_dout = RegArray(Bits(32), 1)
+    def build(self, we, re, addr, wdata):
+        # 捕获并打印 EX 模块发出的信号
+        with Condition(we):
+            log("SRAM: EX阶段 - we=True re=False addr=0x{:x} wdata=0x{:x}", addr, wdata)
+            # 模拟SRAM存储操作
+            log("SRAM: MEM阶段 - Write WORD addr=0x{:x} data=0x{:x}", addr, wdata)
 
-        # 使用sram_init模块创建真正的SRAM
-        sram = create_initialized_sram(width=32, depth=1024)
+            # 检查未对齐访问
+            if addr[1:0] != Bits(2)(0):
+                log("SRAM: Warning - Unaligned access addr=0x{:x} we=True", addr)
 
-        # 创建旁路寄存器
-        ex_mem_bypass = RegArray(Bits(32), 1)
-        mem_wb_bypass = RegArray(Bits(32), 1)
+        with Condition(re):
+            log("SRAM: EX阶段 - we=False re=True addr=0x{:x}", addr)
+            # 模拟SRAM加载操作
+            # 根据地址返回不同的数据，模拟真实的SRAM行为
+            if addr == Bits(32)(0x1000):
+                data = Bits(32)(0x12345678)
+            elif addr == Bits(32)(0x1004):
+                data = Bits(32)(0xABCDEF00)
+            elif addr == Bits(32)(0x1008):
+                data = Bits(32)(0x11223344)
+            elif addr == Bits(32)(0x1010):
+                data = Bits(32)(0x0000ABCD)
+            elif addr == Bits(32)(0x1011):
+                data = Bits(32)(0xFFFFFFEF)
+            else:
+                data = Bits(32)(0x00000000)
 
-        # 创建分支目标寄存器
-        branch_target_reg = RegArray(Bits(32), 1)
+            log("SRAM: MEM阶段 - Read WORD addr=0x{:x} data=0x{:x}", addr, data)
 
-        # 调用DUT的build方法
-        rd_addr, is_load = dut.build(
-            mem_module=mem_module,
-            ex_mem_bypass=ex_mem_bypass,
-            mem_wb_bypass=mem_wb_bypass,
-            branch_target_reg=branch_target_reg,
-            dcache=sram,  # 使用真正的SRAM
+            # 检查未对齐访问
+            if addr[1:0] != Bits(2)(0):
+                log("SRAM: Warning - Unaligned access addr=0x{:x} re=True", addr)
+
+            # 返回读取的数据
+            return data
+
+
+class MockMEM(Module):
+    def __init__(self):
+        # 定义与 MEM 模块一致的输入端口
+        super().__init__(
+            ports={"ctrl": Port(mem_ctrl_signals), "alu_result": Port(Bits(32))}
         )
 
-        # 打印EX阶段传来的信号并检验
-        log("Sink: 检验EX阶段信号 - rd_addr=0x{:x} is_load={}", rd_addr, is_load)
-        
-        # 检验branch_target_reg的值
-        # 根据用户反馈，对于分支指令，检验方法的关键在branch_target_reg是否随预测成功为0且失败时有值
-        log("Sink: 检验branch_target_reg - value=0x{:x}", branch_target_reg[0])
+    @module.combinational
+    def build(self):
+        # 接收并打印
+        ctrl, res = self.pop_all_ports(False)
+        # 打印有效数据
+        # 这里可以验证 EX 算出的结果
+        log("[MEM_Sink] Recv: ALU_Res=0x{:x} Is_Load={}", res, ctrl.is_load)
 
-        # 返回DUT的输出
-        return rd_addr, is_load, ex_mem_bypass, mem_wb_bypass, branch_target_reg
+
+class MockFeedback(Module):
+    def __init__(self):
+        super().__init__(ports={})
+        self.name = "FeedbackSink"
+
+    @module.combinational
+    def build(self, branch_target: Array, exec_bypass: Array):
+        # 读取寄存器的当前值 (Q端)
+        # 注意：这里读到的是上一拍 EX 阶段写入的结果
+        tgt = branch_target[0]
+        byp = exec_bypass[0]
+
+        # 打印日志供 check 函数验证
+        # 格式建议包含 [Feedback] 标签以便区分
+        log("[Feedback] Target=0x{:x} Bypass=0x{:x}", tgt, byp)
+
+        # 检验branch_target_reg的值
+        log("Sink: 检验branch_target_reg - value=0x{:x}", tgt)
 
 
 # ==============================================================================
@@ -1010,26 +1174,36 @@ def check(raw_output):
         0x00000000,  # Case 8: SLTU (0x80000000 < 5 = 0, 无符号比较) - 非内存操作，输出ALU结果
         0x00000078,  # Case 9: 使用EX-MEM旁路 (100+20=120) - 非内存操作，输出ALU结果
         0x000000DC,  # Case 10: 使用MEM-WB旁路 (200+20=220) - 非内存操作，输出ALU结果
-        0x00000000,  # Case 11: BEQ (10-10=0) - 非内存操作，输出ALU结果
-        0xFFFFFFFE,  # Case 12: BNE (10-20=-10) - 非内存操作，输出ALU结果
-        0x00000001,  # Case 13: BLT (5<10=1) - 非内存操作，输出ALU结果
-        0x00000000,  # Case 14: BGE (10>=5=0) - 非内存操作，输出ALU结果
-        0x00001004,  # Case 15: JAL (PC+4=0x1004) - 非内存操作，输出ALU结果
-        0x00001004,  # Case 16: JALR (PC+4=0x1004) - 非内存操作，输出ALU结果
-        0xFFFFFFFE,  # Case 17: BEQ (10-20=-10≠0，BEQ条件不成立) - 非内存操作，输出ALU结果
-        0x00000000,  # Case 18: BNE (10-10=0，BNE条件不成立) - 非内存操作，输出ALU结果
-        0x00000000,  # Case 19: BLT (10>=5，BLT条件不成立) - 非内存操作，输出ALU结果
-        0x00000001,  # Case 20: BGE (5<10，BGE条件不成立) - 非内存操作，输出ALU结果
-        0x00000000,  # Case 21: BLTU (10>=5，BLTU条件不成立) - 非内存操作，输出ALU结果
-        0x00000001,  # Case 22: BGEU (5<10，BGEU条件不成立) - 非内存操作，输出ALU结果
-        0x00001000,  # Case 23: SW (地址=0x1000) - 内存操作，输出地址而非结果
-        0x00001004,  # Case 24: SW (地址=0x1004) - 内存操作，输出地址而非结果
-        0x00001008,  # Case 25: SW (地址=0x1008) - 内存操作，输出地址而非结果
-        0x00001000,  # Case 26: LW (地址=0x1000) - 内存操作，输出地址而非结果
-        0x00001004,  # Case 27: LW (地址=0x1004) - 内存操作，输出地址而非结果
-        0x00001008,  # Case 28: LW (地址=0x1008) - 内存操作，输出地址而非结果
-        0x00001001,  # Case 29: SW (未对齐地址=0x1001) - 内存操作，输出地址而非结果
-        0x00001003,  # Case 30: LW (未对齐地址=0x1003) - 内存操作，输出地址而非结果
+        0x00000140,  # Case 11: 使用WB_BYPASS的ADD指令 (300+20=320) - 非内存操作，输出ALU结果
+        0x00000122,  # Case 12: 使用WB_BYPASS的SUB指令 (300-10=290) - 非内存操作，输出ALU结果
+        0x01040408,  # Case 13: 使用WB_BYPASS的AND指令 (0x12345678 & 0x0F0F0F0F = 0x01040408) - 非内存操作，输出ALU结果
+        0x1B3F5F7F,  # Case 14: 使用WB_BYPASS的OR指令 (0x12345678 | 0x0F0F0F0F = 0x1B3F5F7F) - 非内存操作，输出ALU结果
+        0x0000012C,  # Case 15: 对比三种旁路 - ADD指令 (100+200=300) - 非内存操作，输出ALU结果
+        0x00000064,  # Case 16: 对比三种旁路 - SUB指令 (200-100=100) - 非内存操作，输出ALU结果
+        0x00000000,  # Case 17: BEQ (10-10=0) - 非内存操作，输出ALU结果
+        0xFFFFFFFE,  # Case 18: BNE (10-20=-10) - 非内存操作，输出ALU结果
+        0x00000001,  # Case 19: BLT (5<10=1) - 非内存操作，输出ALU结果
+        0x00000000,  # Case 20: BGE (10>=5=0) - 非内存操作，输出ALU结果
+        0x00001004,  # Case 21: JAL (PC+4=0x1004) - 非内存操作，输出ALU结果
+        0x00001004,  # Case 22: JALR (PC+4=0x1004) - 非内存操作，输出ALU结果
+        0xFFFFFFFE,  # Case 23: BEQ (10-20=-10≠0，BEQ条件不成立) - 非内存操作，输出ALU结果
+        0x00000000,  # Case 24: BNE (10-10=0，BNE条件不成立) - 非内存操作，输出ALU结果
+        0x00000000,  # Case 25: BLT (10>=5，BLT条件不成立) - 非内存操作，输出ALU结果
+        0x00000001,  # Case 26: BGE (5<10，BGE条件不成立) - 非内存操作，输出ALU结果
+        0x00000000,  # Case 27: BLTU (10>=5，BLTU条件不成立) - 非内存操作，输出ALU结果
+        0x00000001,  # Case 28: BGEU (5<10，BGEU条件不成立) - 非内存操作，输出ALU结果
+        0x00001000,  # Case 29: SW (地址=0x1000) - 内存操作，输出地址而非结果
+        0x00001004,  # Case 30: SW (地址=0x1004) - 内存操作，输出地址而非结果
+        0x00001008,  # Case 31: SW (地址=0x1008) - 内存操作，输出地址而非结果
+        0x00001000,  # Case 32: LW (地址=0x1000) - 内存操作，输出地址而非结果
+        0x00001004,  # Case 33: LW (地址=0x1004) - 内存操作，输出地址而非结果
+        0x00001008,  # Case 34: LW (地址=0x1008) - 内存操作，输出地址而非结果
+        0x00001001,  # Case 35: SW (未对齐地址=0x1001) - 内存操作，输出地址而非结果
+        0x00001003,  # Case 36: LW (未对齐地址=0x1003) - 内存操作，输出地址而非结果
+        0x00001020,  # Case 37: SW (地址=0x1020) - 内存操作，输出地址而非结果
+        0x00001020,  # Case 38: LW (地址=0x1020) - 内存操作，输出地址而非结果
+        0x00001021,  # Case 39: SH (未对齐地址=0x1021) - 内存操作，输出地址而非结果
+        0x00001023,  # Case 40: LH (未对齐地址=0x1023) - 内存操作，输出地址而非结果
     ]
 
     # 预期分支类型列表 (必须与Driver中的vectors严格对应)
@@ -1045,18 +1219,35 @@ def check(raw_output):
         "NO_BRANCH",  # Case 8: SLTU
         "NO_BRANCH",  # Case 9: 使用EX-MEM旁路
         "NO_BRANCH",  # Case 10: 使用MEM-WB旁路
-        "BEQ",  # Case 11: BEQ (相等分支)
-        "BNE",  # Case 12: BNE (不等分支)
-        "BLT",  # Case 13: BLT (小于分支)
-        "BGE",  # Case 14: BGE (大于等于分支)
-        "JAL",  # Case 15: JAL (直接跳转)
-        "JALR",  # Case 16: JALR (间接跳转)
-        "BEQ",  # Case 17: BEQ (不相等分支，不跳转)
-        "BNE",  # Case 18: BNE (相等分支，不跳转)
-        "BLT",  # Case 19: BLT (不小于分支，不跳转)
-        "BGE",  # Case 20: BGE (小于分支，不跳转)
-        "BLTU",  # Case 21: BLTU (无符号不小于分支，不跳转)
-        "BGEU",  # Case 22: BGEU (无符号小于分支，不跳转)
+        "NO_BRANCH",  # Case 11: 使用WB_BYPASS的ADD指令
+        "NO_BRANCH",  # Case 12: 使用WB_BYPASS的SUB指令
+        "NO_BRANCH",  # Case 13: 使用WB_BYPASS的AND指令
+        "NO_BRANCH",  # Case 14: 使用WB_BYPASS的OR指令
+        "NO_BRANCH",  # Case 15: 对比三种旁路 - ADD指令
+        "NO_BRANCH",  # Case 16: 对比三种旁路 - SUB指令
+        "BEQ",  # Case 17: BEQ (相等分支)
+        "BNE",  # Case 18: BNE (不等分支)
+        "BLT",  # Case 19: BLT (小于分支)
+        "BGE",  # Case 20: BGE (大于等于分支)
+        "JAL",  # Case 21: JAL (直接跳转)
+        "JALR",  # Case 22: JALR (间接跳转)
+        "BEQ",  # Case 23: BEQ (不相等分支，不跳转)
+        "BNE",  # Case 24: BNE (相等分支，不跳转)
+        "BLT",  # Case 25: BLT (不小于分支，不跳转)
+        "BGE",  # Case 26: BGE (小于分支，不跳转)
+        "BLTU",  # Case 27: BLTU (无符号不小于分支，不跳转)
+        "BGEU",  # Case 28: BGEU (无符号小于分支，不跳转)
+        "NO_BRANCH",  # Case 29: SW
+        "NO_BRANCH",  # Case 30: LW
+        "NO_BRANCH",  # Case 31: SH
+        "NO_BRANCH",  # Case 32: LH
+        "NO_BRANCH",  # Case 33: LHU
+        "NO_BRANCH",  # Case 34: LB
+        "NO_BRANCH",  # Case 35: LBU
+        "NO_BRANCH",  # Case 36: SW
+        "NO_BRANCH",  # Case 37: LW
+        "NO_BRANCH",  # Case 38: SH
+        "NO_BRANCH",  # Case 39: LH
     ]
 
     # 预期分支目标地址列表 (只有分支指令会更新分支目标寄存器)
@@ -1072,18 +1263,35 @@ def check(raw_output):
         None,  # Case 8: SLTU (无分支)
         None,  # Case 9: 使用EX-MEM旁路 (无分支)
         None,  # Case 10: 使用MEM-WB旁路 (无分支)
-        0x1008,  # Case 11: BEQ (PC + 8 = 0x1000 + 8 = 0x1008)
-        0x1008,  # Case 12: BNE (PC + 8 = 0x1000 + 8 = 0x1008)
-        0x1008,  # Case 13: BLT (PC + 8 = 0x1000 + 8 = 0x1008)
-        0x1008,  # Case 14: BGE (PC + 8 = 0x1000 + 8 = 0x1008)
-        0x1008,  # Case 15: JAL (PC + 8 = 0x1000 + 8 = 0x1008)
-        0x2008,  # Case 16: JALR (rs1 + imm = 0x2000 + 8 = 0x2008)
+        None,  # Case 11: 使用WB_BYPASS的ADD指令 (无分支)
+        None,  # Case 12: 使用WB_BYPASS的SUB指令 (无分支)
+        None,  # Case 13: 使用WB_BYPASS的AND指令 (无分支)
+        None,  # Case 14: 使用WB_BYPASS的OR指令 (无分支)
+        None,  # Case 15: 对比三种旁路 - ADD指令 (无分支)
+        None,  # Case 16: 对比三种旁路 - SUB指令 (无分支)
         0x1008,  # Case 17: BEQ (PC + 8 = 0x1000 + 8 = 0x1008)
         0x1008,  # Case 18: BNE (PC + 8 = 0x1000 + 8 = 0x1008)
         0x1008,  # Case 19: BLT (PC + 8 = 0x1000 + 8 = 0x1008)
         0x1008,  # Case 20: BGE (PC + 8 = 0x1000 + 8 = 0x1008)
-        0x1008,  # Case 21: BLTU (PC + 8 = 0x1000 + 8 = 0x1008)
-        0x1008,  # Case 22: BGEU (PC + 8 = 0x1000 + 8 = 0x1008)
+        0x1008,  # Case 21: JAL (PC + 8 = 0x1000 + 8 = 0x1008)
+        0x2008,  # Case 22: JALR (rs1 + imm = 0x2000 + 8 = 0x2008)
+        0x1008,  # Case 23: BEQ (PC + 8 = 0x1000 + 8 = 0x1008)
+        0x1008,  # Case 24: BNE (PC + 8 = 0x1000 + 8 = 0x1008)
+        0x1008,  # Case 25: BLT (PC + 8 = 0x1000 + 8 = 0x1008)
+        0x1008,  # Case 26: BGE (PC + 8 = 0x1000 + 8 = 0x1008)
+        0x1008,  # Case 27: BLTU (PC + 8 = 0x1000 + 8 = 0x1008)
+        0x1008,  # Case 28: BGEU (PC + 8 = 0x1000 + 8 = 0x1008)
+        None,  # Case 29: SW (无分支)
+        None,  # Case 30: LW (无分支)
+        None,  # Case 31: SH (无分支)
+        None,  # Case 32: LH (无分支)
+        None,  # Case 33: LHU (无分支)
+        None,  # Case 34: LB (无分支)
+        None,  # Case 35: LBU (无分支)
+        None,  # Case 36: SW (无分支)
+        None,  # Case 37: LW (无分支)
+        None,  # Case 38: SH (无分支)
+        None,  # Case 39: LH (无分支)
     ]
 
     # 预期分支是否跳转列表
@@ -1099,26 +1307,35 @@ def check(raw_output):
         False,  # Case 8: SLTU (无分支)
         False,  # Case 9: 使用EX-MEM旁路 (无分支)
         False,  # Case 10: 使用MEM-WB旁路 (无分支)
-        True,  # Case 11: BEQ (10 == 10，条件成立，跳转)
-        True,  # Case 12: BNE (10 != 20，条件成立，跳转)
-        True,  # Case 13: BLT (5 < 10，条件成立，跳转)
-        True,  # Case 14: BGE (10 >= 5，条件成立，跳转)
-        True,  # Case 15: JAL (无条件跳转)
-        True,  # Case 16: JALR (无条件跳转)
-        False,  # Case 17: BEQ (10 != 20，条件不成立，不跳转)
-        False,  # Case 18: BNE (10 == 10，条件不成立，不跳转)
-        False,  # Case 19: BLT (10 >= 5，BLT条件不成立)
-        False,  # Case 20: BGE (5 < 10，BGE条件不成立)
-        False,  # Case 21: BLTU (10 >= 5，BLTU条件不成立)
-        False,  # Case 22: BGEU (5 < 10，BGEU条件不成立)
-        False,  # Case 23: SW (无分支)
-        False,  # Case 24: SW (无分支)
-        False,  # Case 25: SW (无分支)
-        False,  # Case 26: LW (无分支)
-        False,  # Case 27: LW (无分支)
-        False,  # Case 28: LW (无分支)
-        False,  # Case 29: SW (未对齐地址，无分支)
-        False,  # Case 30: LW (未对齐地址，无分支)
+        False,  # Case 11: 使用WB_BYPASS的ADD指令 (无分支)
+        False,  # Case 12: 使用WB_BYPASS的SUB指令 (无分支)
+        False,  # Case 13: 使用WB_BYPASS的AND指令 (无分支)
+        False,  # Case 14: 使用WB_BYPASS的OR指令 (无分支)
+        False,  # Case 15: 对比三种旁路 - ADD指令 (无分支)
+        False,  # Case 16: 对比三种旁路 - SUB指令 (无分支)
+        True,  # Case 17: BEQ (10 == 10，条件成立，跳转)
+        True,  # Case 18: BNE (10 != 20，条件成立，跳转)
+        True,  # Case 19: BLT (5 < 10，条件成立，跳转)
+        True,  # Case 20: BGE (10 >= 5，条件成立，跳转)
+        True,  # Case 21: JAL (无条件跳转)
+        True,  # Case 22: JALR (无条件跳转)
+        False,  # Case 23: BEQ (10 != 20，条件不成立，不跳转)
+        False,  # Case 24: BNE (10 == 10，条件不成立，不跳转)
+        False,  # Case 25: BLT (10 >= 5，BLT条件不成立)
+        False,  # Case 26: BGE (5 < 10，BGE条件不成立)
+        False,  # Case 27: BLTU (10 >= 5，BLTU条件不成立)
+        False,  # Case 28: BGEU (5 < 10，BGEU条件不成立)
+        False,  # Case 29: SW (无分支)
+        False,  # Case 30: LW (无分支)
+        False,  # Case 31: SH (无分支)
+        False,  # Case 32: LH (无分支)
+        False,  # Case 33: LHU (无分支)
+        False,  # Case 34: LB (无分支)
+        False,  # Case 35: LBU (无分支)
+        False,  # Case 36: SW (无分支)
+        False,  # Case 37: LW (无分支)
+        False,  # Case 38: SH (无分支)
+        False,  # Case 39: LH (无分支)
     ]
 
     # 预期SRAM操作列表
@@ -1135,26 +1352,84 @@ def check(raw_output):
         None,  # Case 8: SLTU (无SRAM操作)
         None,  # Case 9: 使用EX-MEM旁路 (无SRAM操作)
         None,  # Case 10: 使用MEM-WB旁路 (无SRAM操作)
-        None,  # Case 11: BEQ (无SRAM操作)
-        None,  # Case 12: BNE (无SRAM操作)
-        None,  # Case 13: BLT (无SRAM操作)
-        None,  # Case 14: BGE (无SRAM操作)
-        None,  # Case 15: JAL (无SRAM操作)
-        None,  # Case 16: JALR (无SRAM操作)
+        None,  # Case 11: 使用WB_BYPASS的ADD指令 (无SRAM操作)
+        None,  # Case 12: 使用WB_BYPASS的SUB指令 (无SRAM操作)
+        None,  # Case 13: 使用WB_BYPASS的AND指令 (无SRAM操作)
+        None,  # Case 14: 使用WB_BYPASS的OR指令 (无SRAM操作)
+        None,  # Case 15: 对比三种旁路 - ADD指令 (无SRAM操作)
+        None,  # Case 16: 对比三种旁路 - SUB指令 (无SRAM操作)
         None,  # Case 17: BEQ (无SRAM操作)
         None,  # Case 18: BNE (无SRAM操作)
         None,  # Case 19: BLT (无SRAM操作)
         None,  # Case 20: BGE (无SRAM操作)
-        None,  # Case 21: BLTU (无SRAM操作)
-        None,  # Case 22: BGEU (无SRAM操作)
-        ("EX_STORE", 0x1000, 0x12345678),  # Case 23: SW (EX阶段输出地址=0x1000, MEM阶段实际存储数据=0x12345678)
-        ("EX_STORE", 0x1004, 0xABCDEF00),  # Case 24: SW (EX阶段输出地址=0x1004, MEM阶段实际存储数据=0xABCDEF00)
-        ("EX_STORE", 0x1008, 0x11223344),  # Case 25: SW (EX阶段输出地址=0x1008, MEM阶段实际存储数据=0x11223344)
-        ("EX_LOAD", 0x1000, 0x12345678),  # Case 26: LW (EX阶段输出地址=0x1000, MEM阶段实际加载数据=0x12345678)
-        ("EX_LOAD", 0x1004, 0xABCDEF00),  # Case 27: LW (EX阶段输出地址=0x1004, MEM阶段实际加载数据=0xABCDEF00)
-        ("EX_LOAD", 0x1008, 0x11223344),  # Case 28: LW (EX阶段输出地址=0x1008, MEM阶段实际加载数据=0x11223344)
-        ("EX_STORE", 0x1001, 0x55555555),  # Case 29: SW (EX阶段输出未对齐地址=0x1001, MEM阶段尝试存储数据=0x55555555)
-        ("EX_LOAD", 0x1003, None),  # Case 30: LW (EX阶段输出未对齐地址=0x1003, MEM阶段尝试加载数据)
+        None,  # Case 21: JAL (无SRAM操作)
+        None,  # Case 22: JALR (无SRAM操作)
+        None,  # Case 23: BEQ (无SRAM操作)
+        None,  # Case 24: BNE (无SRAM操作)
+        None,  # Case 25: BLT (无SRAM操作)
+        None,  # Case 26: BGE (无SRAM操作)
+        None,  # Case 27: BLTU (无SRAM操作)
+        None,  # Case 28: BGEU (无SRAM操作)
+        (
+            "EX_STORE",
+            0x1000,
+            0x12345678,
+        ),  # Case 29: SW (EX阶段输出地址=0x1000, MEM阶段实际存储数据=0x12345678)
+        (
+            "EX_STORE",
+            0x1004,
+            0xABCDEF00,
+        ),  # Case 30: SW (EX阶段输出地址=0x1004, MEM阶段实际存储数据=0xABCDEF00)
+        (
+            "EX_STORE",
+            0x1008,
+            0x11223344,
+        ),  # Case 31: SW (EX阶段输出地址=0x1008, MEM阶段实际存储数据=0x11223344)
+        (
+            "EX_LOAD",
+            0x1000,
+            0x12345678,
+        ),  # Case 32: LW (EX阶段输出地址=0x1000, MEM阶段实际加载数据=0x12345678)
+        (
+            "EX_LOAD",
+            0x1004,
+            0xABCDEF00,
+        ),  # Case 33: LW (EX阶段输出地址=0x1004, MEM阶段实际加载数据=0xABCDEF00)
+        (
+            "EX_LOAD",
+            0x1008,
+            0x11223344,
+        ),  # Case 34: LW (EX阶段输出地址=0x1008, MEM阶段实际加载数据=0x11223344)
+        (
+            "EX_STORE",
+            0x1001,
+            0x55555555,
+        ),  # Case 35: SW (EX阶段输出未对齐地址=0x1001, MEM阶段尝试存储数据=0x55555555)
+        (
+            "EX_LOAD",
+            0x1003,
+            None,
+        ),  # Case 36: LW (EX阶段输出未对齐地址=0x1003, MEM阶段尝试加载数据)
+        (
+            "EX_STORE",
+            0x1010,
+            0xABCD,
+        ),  # Case 37: SH (EX阶段输出地址=0x1010, MEM阶段实际存储数据=0xABCD)
+        (
+            "EX_LOAD",
+            0x1010,
+            0xABCD,
+        ),  # Case 38: LH (EX阶段输出地址=0x1010, MEM阶段实际加载数据=0xABCD)
+        (
+            "EX_STORE",
+            0x1011,
+            0xEF,
+        ),  # Case 39: SB (EX阶段输出地址=0x1011, MEM阶段实际存储数据=0xEF)
+        (
+            "EX_LOAD",
+            0x1011,
+            0xFFFFFFEF,
+        ),  # Case 40: LB (EX阶段输出地址=0x1011, MEM阶段实际加载数据=0xFFFFFFEF)
     ]
 
     # 捕获实际的ALU结果
@@ -1224,16 +1499,18 @@ def check(raw_output):
             data_match = re.search(r"wdata=(0x[0-9a-fA-F]+)", line)
             we_match = re.search(r"we=(True|False)", line)
             re_match = re.search(r"re=(True|False)", line)
-            
+
             if addr_match and we_match and re_match:
                 addr = int(addr_match.group(1), 16)
                 we = we_match.group(1) == "True"
                 re = re_match.group(1) == "True"
                 data = int(data_match.group(1), 16) if data_match else None
-                
+
                 if we:
                     sram_ops.append(("EX_STORE", addr, data))
-                    print(f"  [捕获] EX阶段Store地址: addr=0x{addr:08x}, data=0x{data:08x if data else 0:08x}")
+                    print(
+                        f"  [捕获] EX阶段Store地址: addr=0x{addr:08x}, data=0x{data:08x if data else 0:08x}"
+                    )
                 elif re:
                     sram_ops.append(("EX_LOAD", addr, data))
                     print(f"  [捕获] EX阶段Load地址: addr=0x{addr:08x}")
@@ -1247,14 +1524,18 @@ def check(raw_output):
                 if addr_match and data_match:
                     addr = int(addr_match.group(1), 16)
                     data = int(data_match.group(1), 16)
-                    print(f"  [捕获] MEM阶段实际Write: addr=0x{addr:08x}, data=0x{data:08x}")
+                    print(
+                        f"  [捕获] MEM阶段实际Write: addr=0x{addr:08x}, data=0x{data:08x}"
+                    )
             elif "Read" in line:
                 addr_match = re.search(r"addr=(0x[0-9a-fA-F]+)", line)
                 data_match = re.search(r"data=(0x[0-9a-fA-F]+)", line)
                 if addr_match and data_match:
                     addr = int(addr_match.group(1), 16)
                     data = int(data_match.group(1), 16)
-                    print(f"  [捕获] MEM阶段实际Read: addr=0x{addr:08x}, data=0x{data:08x}")
+                    print(
+                        f"  [捕获] MEM阶段实际Read: addr=0x{addr:08x}, data=0x{data:08x}"
+                    )
 
         # 捕获SRAM未对齐访问警告
         if "SRAM: Warning - Unaligned access" in line:
@@ -1445,6 +1726,7 @@ def check(raw_output):
     print("✅ EX模块测试通过！(所有ALU操作、分支指令、旁路功能和SRAM操作均正确)")
     print("✅ branch_target_reg正确反映了预测成功/失败状态")
     print("✅ EX阶段正确输出地址而非结果，MEM阶段正确处理内存操作")
+    print("✅ WB_BYPASS功能正常工作，能够正确从写回阶段旁路数据到执行阶段")
 
 
 # ==============================================================================
@@ -1456,32 +1738,61 @@ if __name__ == "__main__":
     with sys:
         # 创建测试模块
         dut = Execution()
-        mem_module = MemoryAccess()  # 虚拟的MEM模块，用于测试
         driver = Driver()
-        sink = Sink()
+
+        # 创建Mock模块
+        mock_sram = MockSRAM()
+        mock_feedback = MockFeedback()
 
         # 创建旁路寄存器和分支目标寄存器
         ex_mem_bypass = RegArray(Bits(32), 1)
         mem_wb_bypass = RegArray(Bits(32), 1)
+        wb_bypass = RegArray(Bits(32), 1)
         branch_target_reg = RegArray(Bits(32), 1)
+
+        # 创建一个虚拟的MEM模块，只用于接收EX的输出，不进行实际处理
+        class MockMEM(Module):
+            def __init__(self):
+                # 定义与 MEM 模块一致的输入端口
+                super().__init__(
+                    ports={"ctrl": Port(mem_ctrl_signals), "alu_result": Port(Bits(32))}
+                )
+                self.name = "MockMEM"
+
+            @module.combinational
+            def build(self):
+                # 接收并打印
+                ctrl, res = self.pop_all_ports(False)
+                # 打印有效数据
+                # 这里可以验证 EX 算出的结果
+                log("[MEM_Sink] Recv: ALU_Res=0x{:x} Is_Load={}", res, ctrl.is_load)
+                # 更新MEM-WB旁路寄存器
+                mem_wb_bypass[0] = res
+
+        # 创建虚拟的MEM模块
+        mock_mem_module = MockMEM()
 
         # [关键] 获取 Driver 的返回值
         driver_cnt, driver_expected = driver.build(
-            dut, mem_module, ex_mem_bypass, mem_wb_bypass, branch_target_reg
+            dut,
+            mock_mem_module,
+            ex_mem_bypass,
+            mem_wb_bypass,
+            wb_bypass,
+            branch_target_reg,
         )
 
-        # 获取 Sink 的返回值
-        rd_addr, is_load, ex_mem_bypass_out, mem_wb_bypass_out, branch_target_out = sink.build(dut, mem_module)
-        
-        # [关键] 暴露 Driver 的计数器，防止被 DCE 优化掉
-        sys.expose_on_top(driver_cnt, kind="Output")
-        sys.expose_on_top(driver_expected, kind="Output")
+        # 调用Execution模块，传入所有必要的参数
+        dut.build(
+            mem_module=mock_mem_module,
+            ex_mem_bypass=ex_mem_bypass,
+            mem_wb_bypass=mem_wb_bypass,
+            wb_bypass=wb_bypass,
+            branch_target_reg=branch_target_reg,
+            dcache=mock_sram,
+        )
 
-        # 暴露其他信号
-        sys.expose_on_top(ex_mem_bypass_out, kind="Output")
-        sys.expose_on_top(mem_wb_bypass_out, kind="Output")
-        sys.expose_on_top(branch_target_out, kind="Output")
-        sys.expose_on_top(rd_addr, kind="Output")
-        sys.expose_on_top(is_load, kind="Output")
+        # 调用MockFeedback模块，检查旁路寄存器和分支目标寄存器的值
+        mock_feedback.build(branch_target_reg, ex_mem_bypass)
 
     run_test_module(sys, check)

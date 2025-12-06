@@ -30,6 +30,7 @@ class Execution(Module):
         # --- 旁路数据源 (Forwarding Sources) ---
         ex_mem_bypass: Array,  # 来自 EX-MEM 旁路寄存器的数据（上条指令结果）
         mem_wb_bypass: Array,  # 来自 MEM-WB 旁路寄存器的数据 (上上条指令结果)
+        wb_bypass: Array,  # 来自 WB 旁路寄存器的数据 (当前写回数据)
         # --- 分支反馈 ---
         branch_target_reg: Array,  # 用于通知 IF 跳转目标的全局寄存器
         dcache: SRAM,  # SRAM 模块引用 (用于Store操作)
@@ -41,16 +42,22 @@ class Execution(Module):
         rs1 = self.rs1_data.pop()
         rs2 = self.rs2_data.pop()
         imm = self.imm.pop()
+        mem_ctrl = mem_ctrl_signals.view(ctrl.mem_ctrl)
 
         # 获取旁路数据
         fwd_from_mem = ex_mem_bypass[0]
         fwd_from_wb = mem_wb_bypass[0]
+        fwd_from_wb_stage = wb_bypass[0]
 
         # --- rs1 旁路处理 ---
-        real_rs1 = ctrl.rs1_sel.select1hot(rs1, fwd_from_mem, fwd_from_wb)
+        real_rs1 = ctrl.rs1_sel.select1hot(
+            rs1, fwd_from_mem, fwd_from_wb, fwd_from_wb_stage
+        )
 
         # --- rs2 旁路处理 ---
-        real_rs2 = ctrl.rs2_sel.select1hot(rs2, fwd_from_mem, fwd_from_wb)
+        real_rs2 = ctrl.rs2_sel.select1hot(
+            rs2, fwd_from_mem, fwd_from_wb, fwd_from_wb_stage
+        )
 
         # --- 操作数 1 选择 ---
         alu_op1 = ctrl.op1_sel.select1hot(
@@ -65,8 +72,8 @@ class Execution(Module):
         # --- ALU 计算 ---
         # 1. 基础运算
         # 转换为有符号数进行加减法运算
-        op1_signed = alu_op1.bitcast(SInt(32))
-        op2_signed = alu_op2.bitcast(SInt(32))
+        op1_signed = alu_op1.bitcast(Int(32))
+        op2_signed = alu_op2.bitcast(Int(32))
 
         # 加法
         add_res = (op1_signed + op2_signed).bitcast(Bits(32))
@@ -84,13 +91,13 @@ class Execution(Module):
         xor_res = alu_op1 ^ alu_op2
 
         # 逻辑左移 (使用低5位作为移位位数)
-        sll_res = alu_op1 << alu_op2[4:0]
+        sll_res = alu_op1 << alu_op2[0:4]
 
         # 逻辑右移 (使用低5位作为移位位数)
-        srl_res = alu_op1 >> alu_op2[4:0]
+        srl_res = alu_op1 >> alu_op2[0:4]
 
         # 算术右移 (使用低5位作为移位位数)
-        sra_res = op1_signed >> alu_op2[4:0]
+        sra_res = op1_signed >> alu_op2[0:4]
         sra_res = sra_res.bitcast(Bits(32))
 
         # 有符号比较小于
@@ -122,18 +129,37 @@ class Execution(Module):
         # 3. 驱动本级 Bypass 寄存器 (向 ID 级提供数据)
         # 这样下一拍 ID 级就能看到这条指令的结果了
         ex_mem_bypass[0] = alu_result
-        
+
         # 输出ALU结果日志
         log("EX: ALU Result: 0x{:x}", alu_result)
-        
+
         # 输出旁路寄存器更新日志
         log("EX: Bypass Update: 0x{:x}", alu_result)
+
+        # 输出旁路选择日志
+        with Condition(ctrl.rs1_sel == Rs1Sel.RS1):
+            log("EX: RS1 source: Register")
+        with Condition(ctrl.rs1_sel == Rs1Sel.EX_MEM_BYPASS):
+            log("EX: RS1 source: EX-MEM Bypass (0x{:x})", fwd_from_mem)
+        with Condition(ctrl.rs1_sel == Rs1Sel.MEM_WB_BYPASS):
+            log("EX: RS1 source: MEM-WB Bypass (0x{:x})", fwd_from_wb)
+        with Condition(ctrl.rs1_sel == Rs1Sel.WB_BYPASS):
+            log("EX: RS1 source: WB Bypass (0x{:x})", fwd_from_wb_stage)
+
+        with Condition(ctrl.rs2_sel == Rs2Sel.RS2):
+            log("EX: RS2 source: Register")
+        with Condition(ctrl.rs2_sel == Rs2Sel.EX_MEM_BYPASS):
+            log("EX: RS2 source: EX-MEM Bypass (0x{:x})", fwd_from_mem)
+        with Condition(ctrl.rs2_sel == Rs2Sel.MEM_WB_BYPASS):
+            log("EX: RS2 source: MEM-WB Bypass (0x{:x})", fwd_from_wb)
+        with Condition(ctrl.rs2_sel == Rs2Sel.WB_BYPASS):
+            log("EX: RS2 source: WB Bypass (0x{:x})", fwd_from_wb_stage)
 
         # --- 访存操作 (Store Handling) ---
         # 仅在 is_write (Store) 为真时驱动 SRAM 的 WE
         # 地址是 ALU 计算结果，数据是经过 Forwarding 的 rs2
-        is_store = ctrl.mem_ctrl.mem_opcode == MemOp.STORE
-        is_load = ctrl.mem_ctrl.mem_opcode == MemOp.LOAD
+        is_store = mem_ctrl.mem_opcode == MemOp.STORE
+        is_load = mem_ctrl.mem_opcode == MemOp.LOAD
 
         # 直接调用 dcache.build 处理 SRAM 操作
         dcache.build(
@@ -167,7 +193,7 @@ class Execution(Module):
             | (ctrl.branch_type == BranchType.BLTU)
             | (ctrl.branch_type == BranchType.BGEU)
         )
-        
+
         # 输出分支类型日志
         with Condition(ctrl.branch_type == BranchType.BEQ):
             log("EX: Branch Type: BEQ")
@@ -188,45 +214,32 @@ class Execution(Module):
         with Condition(ctrl.branch_type == BranchType.NO_BRANCH):
             log("EX: Branch Type: NO_BRANCH")
 
-        with Condition(is_branch):
-            # 根据不同的分支类型判断分支条件
-            is_eq = alu_result == Bits(32)(0)
-            is_lt = alu_result[31:31] == Bits(1)(1)  # 符号位为1表示小于
+        # 根据不同的分支类型判断分支条件
+        is_eq = alu_result == Bits(32)(0)
+        is_lt = alu_result[31:31] == Bits(1)(1)  # 符号位为1表示小于
 
-            # BEQ, BNE 使用等于判断
-            is_taken_eq = (ctrl.branch_type == BranchType.BEQ) & is_eq
-            is_taken_ne = (ctrl.branch_type == BranchType.BNE) & ~is_eq
+        # BEQ, BNE 使用等于判断
+        is_taken_eq = (ctrl.branch_type == BranchType.BEQ) & is_eq
+        is_taken_ne = (ctrl.branch_type == BranchType.BNE) & ~is_eq
 
-            # BLT, BGE 使用小于判断
-            is_taken_lt = (ctrl.branch_type == BranchType.BLT) & is_lt
-            is_taken_ge = (ctrl.branch_type == BranchType.BGE) & ~is_lt
+        # BLT, BGE 使用小于判断
+        is_taken_lt = (ctrl.branch_type == BranchType.BLT) & is_lt
+        is_taken_ge = (ctrl.branch_type == BranchType.BGE) & ~is_lt
 
-            # BLTU, BGEU 使用无符号小于判断
-            is_taken_ltu = (ctrl.branch_type == BranchType.BLTU) & is_lt
-            is_taken_geu = (ctrl.branch_type == BranchType.BGEU) & ~is_lt
+        # BLTU, BGEU 使用无符号小于判断
+        is_taken_ltu = (ctrl.branch_type == BranchType.BLTU) & is_lt
+        is_taken_geu = (ctrl.branch_type == BranchType.BGEU) & ~is_lt
 
-            is_taken = (
-                is_taken_eq
-                | is_taken_ne
-                | is_taken_lt
-                | is_taken_ge
-                | is_taken_ltu
-                | is_taken_geu
-            )
+        is_taken = (
+            is_taken_eq
+            | is_taken_ne
+            | is_taken_lt
+            | is_taken_ge
+            | is_taken_ltu
+            | is_taken_geu
+        ) & is_branch
 
-        # 3. 根据指令类型决定最终的下一 PC 地址
-        is_branch_or_jump = (
-            (ctrl.branch_type == BranchType.BEQ)
-            | (ctrl.branch_type == BranchType.BNE)
-            | (ctrl.branch_type == BranchType.BLT)
-            | (ctrl.branch_type == BranchType.BGE)
-            | (ctrl.branch_type == BranchType.BLTU)
-            | (ctrl.branch_type == BranchType.BGEU)
-            | (ctrl.branch_type == BranchType.JAL)
-            | (ctrl.branch_type == BranchType.JALR)
-        )
-
-        final_next_pc = is_branch_or_jump.select(
+        final_next_pc = is_branch.select(
             is_taken.select(
                 calc_target,  # Taken
                 pc + Bits(32)(4),  # Not Taken
@@ -240,19 +253,19 @@ class Execution(Module):
             final_next_pc,  # 跳转，写入目标地址
             Bits(32)(0),  # 不跳转，写 0 表示顺序执行
         )
-        
+
         # 输出分支目标和分支是否跳转的日志
-        with Condition(is_branch_or_jump):
+        with Condition(is_branch):
             log("EX: Branch Target: 0x{:x}", calc_target)
             log("EX: Branch Taken: {}", is_taken == Bits(1)(1))
 
         # --- 下一级绑定与状态反馈 ---
         # 构造发送给 MEM 的包
         # 只有两个参数：控制 + 统一数据
-        mem_call = mem_module.async_called(ctrl=ctrl.mem_ctrl, alu_result=alu_result)
+        mem_call = mem_module.async_called(ctrl=mem_ctrl, alu_result=alu_result)
         mem_call.bind.set_fifo_depth(ctrl=1, alu_result=1)
 
         # 3. 返回状态 (供 HazardUnit 窃听)
         # rd_addr 用于记分牌/依赖检测
         # is_load 用于检测 Load-Use 冒险
-        return ctrl.mem_ctrl.rd_addr, is_load
+        return mem_ctrl.rd_addr, is_load
