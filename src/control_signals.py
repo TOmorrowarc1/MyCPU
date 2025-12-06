@@ -52,14 +52,16 @@ class BranchType:
     JALR      = Bits(16)(0b0000000100000000)
 
 class Rs1Sel:
-    RS1        = Bits(3)(0b001)
-    EX_MEM_BYPASS = Bits(3)(0b010)
-    MEM_WB_BYPASS = Bits(3)(0b100)
+    RS1        = Bits(4)(0b0001)
+    EX_MEM_BYPASS = Bits(4)(0b0010)
+    MEM_WB_BYPASS = Bits(4)(0b0100)
+    WB_BYPASS = Bits(4)(0b1000)
 
 class Rs2Sel:
-    RS2 = Bits(3)(0b001)
-    EX_MEM_BYPASS = Bits(3)(0b010)
-    MEM_WB_BYPASS = Bits(3)(0b100)
+    RS2 = Bits(4)(0b0001)
+    EX_MEM_BYPASS = Bits(4)(0b0010)
+    MEM_WB_BYPASS = Bits(4)(0b0100)
+    WB_BYPASS = Bits(4)(0b1000)
 
 # 操作数 1 选择 (One-hot, Bits(3))
 # 对应: real_rs1, pc, 0
@@ -121,8 +123,8 @@ mem_ctrl_signals = Record(
 # 执行域 (ExCtrl)
 ex_ctrl_signals = Record(
     alu_func = Bits(16),   # ALU 功能码，使用 Bits(16) 静态定义 (ADD:Bits(16)(0b0000000000000001), SUB:Bits(16)(0b0000000000000010), ...)
-    rs1_sel  = Bits(3),    # rs1结果来源，使用 Bits(3) 静态定义 (RS1:Bits(3)(0b001), EX_MEM_BYPASS:Bits(3)(0b010), MEM_WB_BYPASS:Bits(3)(0b100))
-    rs2_sel  = Bits(3),    # rs2结果来源，使用 Bits(3) 静态定义 (RS2:Bits(3)(0b001), EX_MEM_BYPASS:Bits(3)(0b010), MEM_WB_BYPASS:Bits(3)(0b100))
+    rs1_sel  = Bits(4),    # rs1结果来源，使用 Bits(4) 静态定义 (RS1:Bits(4)(0b0001), EX_BYPASS:Bits(4)(0b0010), MEM_BYPASS:Bits(4)(0b0100), WB_BYPASS: Bits(4)(0b1000))
+    rs2_sel  = Bits(4),    # rs2结果来源，使用 Bits(4) 静态定义 (RS2:Bits(4)(0b0001), EX_BYPASS:Bits(4)(0b0010), MEM_BYPASS:Bits(4)(0b0100), WB_BYPASS:Bits(4)(0b1000))
     op1_sel  = Bits(3),    # 操作数1来源，使用 Bits(3) 静态定义 (RS1:Bits(3)(0b001), PC:Bits(3)(0b010), ZERO:Bits(3)(0b100))
     op2_sel  = Bits(3),    # 操作数2来源，使用 Bits(3) 静态定义 (RS2:Bits(3)(0b001), IMM:Bits(3)(0b010), CONST_4:Bits(3)(0b100))
     branch_type=Bits(16), # Branch 指令功能码，使用 Bits(16) 静态定义

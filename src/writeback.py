@@ -1,26 +1,26 @@
 from assassyn.frontend import *
 
+
 class WriteBack(Module):
-    
+
     def __init__(self):
         super().__init__(
             ports={
                 # 控制通路：包含 rd_addr
-                'ctrl': Port(Bits(5)),
-                
+                "ctrl": Port(Bits(5)),
                 # 数据通路：来自 MEM 级的最终结果 (Mux 后的结果)
-                'wdata': Port(Bits(32))
+                "wdata": Port(Bits(32)),
             }
         )
-        self.name = 'WB'
+        self.name = "WB"
 
     @module.combinational
-    def build(self, reg_file: Array):
+    def build(self, reg_file: Array, wb_bypass_reg: Array):
         # 1. 获取输入 (Consume)
         # 从 MEM->WB 的 FIFO 中弹出数据
         # 由于采用刚性流水线（NOP注入），这里假定总是能 pop 到数据
         ctrl, wdata = self.pop_all_ports(False)
-        
+
         rd = ctrl
 
         # 2. 写入逻辑 (Write Logic)
@@ -29,9 +29,11 @@ class WriteBack(Module):
         with Condition(rd != Bits(5)(0)):
             # 调试日志：打印写回操作
             log("WB: Write x{} <= 0x{:x}", rd, wdata)
-                
+
             # 驱动寄存器堆的 D 端和 WE 端
             reg_file[rd] = wdata
+
+            wb_bypass_reg[0] = wdata
 
         # 3. 状态反馈 (Feedback to Hazard Unit)
         # 将当前的 rd 返回，供 DataHazardUnit (Downstream) 使用

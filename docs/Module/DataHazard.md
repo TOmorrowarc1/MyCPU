@@ -2,7 +2,7 @@
 
 ## 1. 模块概述
 
-**DataHazardUnit** 是一个 **纯组合逻辑 (`Downstream`)** 模块。它是流水线的“交通指挥官”。
+**DataHazardUnit** 是一个 **纯组合逻辑 (`Downstream`)** 模块。
 
 *   **职责**：
     1.  **前瞻控制 (Forwarding Logic)**：检测 RAW 冒险，生成多路选择信号，控制 EX 阶段 ALU 的操作数来源。
