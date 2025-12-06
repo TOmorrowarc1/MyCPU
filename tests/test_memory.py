@@ -295,7 +295,9 @@ if __name__ == "__main__":
         mem_ctrl = dut.build(wb_module, sram_dout, mem_bypass_reg)
 
         # 获取 WB 模块的返回值
-        wb_rd = wb_module.build(reg_file)
+        # 创建 wb_bypass_reg 用于 WriteBack 模块
+        wb_bypass_reg = RegArray(Bits(32), 1)
+        wb_rd = wb_module.build(reg_file, wb_bypass_reg)
 
         # [关键] 暴露 Driver 的计数器，防止被 DCE 优化掉
         sys.expose_on_top(driver_cnt, kind="Output")
@@ -306,5 +308,6 @@ if __name__ == "__main__":
         sys.expose_on_top(reg_file, kind="Output")
         sys.expose_on_top(wb_rd, kind="Output")
         sys.expose_on_top(mem_bypass_reg, kind="Output")
+        sys.expose_on_top(wb_bypass_reg, kind="Output")
 
     run_test_module(sys, check)

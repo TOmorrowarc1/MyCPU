@@ -135,6 +135,7 @@ if __name__ == "__main__":
 
     with sys:
         reg_file = RegArray(Bits(32), 32)
+        wb_bypass_reg = RegArray(Bits(32), 1)  # 添加 wb_bypass_reg
         dut = WriteBack()
         driver = Driver()
 
@@ -142,13 +143,14 @@ if __name__ == "__main__":
         driver_cnt = driver.build(dut)
 
         # 获取 DUT 的返回值 (rd)
-        wb_rd = dut.build(reg_file)
+        wb_rd = dut.build(reg_file, wb_bypass_reg)  # 传入两个参数
 
         # [关键] 暴露 Driver 的计数器，防止被 DCE 优化掉
         sys.expose_on_top(driver_cnt, kind="Output")
 
         # 暴露 DUT 的输出
         sys.expose_on_top(reg_file, kind="Output")
+        sys.expose_on_top(wb_bypass_reg, kind="Output")  # 暴露 wb_bypass_reg
         sys.expose_on_top(wb_rd, kind="Output")
 
     run_test_module(sys, check)

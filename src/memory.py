@@ -95,4 +95,4 @@ class MemoryAccess(Module):
 
         # 状态暴露
         # 将当前的控制包返回，供 DataHazardUnit 使用
-        return ctrl
+        return ctrl.rd_addr
