@@ -11,7 +11,15 @@ from assassyn.frontend import *
 from src.execution import Execution
 from src.control_signals import *
 from tests.common import run_test_module
-from tests.test_mocks import MockSRAM, MockMEM, MockFeedback, check_alu_results, check_bypass_updates, check_branch_operations, check_branch_target_reg
+from tests.test_mocks import (
+    MockSRAM,
+    MockMEM,
+    MockFeedback,
+    check_alu_results,
+    check_bypass_updates,
+    check_branch_operations,
+    check_branch_target_reg,
+)
 
 
 # ==============================================================================
@@ -25,15 +33,29 @@ class Driver(Module):
     def build(
         self,
         dut: Module,
-        mem_module: Module,
         ex_mem_bypass: Array,
         mem_wb_bypass: Array,
         wb_bypass: Array,
-        branch_target_reg: Array,
+        mock_feedback: Module,
     ):
         # --- 测试向量定义 ---
         # 格式: (alu_func, rs1_sel, rs2_sel, op1_sel, op2_sel, branch_type,
         #       next_pc_addr, pc, rs1_data, rs2_data, imm, ex_mem_fwd, mem_wb_fwd, wb_fwd, expected_result)
+        #
+        # alu_func: ALU功能码 (独热码)
+        # rs1_sel/rs2_sel: 数据来源选择 (独热码)
+        # op1_sel/op2_sel: 操作数选择 (独热码)
+        # branch_type: 分支类型 (16位独热码)
+        # next_pc_addr: 预测的下一条PC地址
+        # pc: 当前PC值
+        # rs1_data: 寄存器数据
+        # rs2_data: 寄存器数据
+        # imm: 立即数
+        # ex_mem_fwd: EX-MEM旁路数据
+        # mem_wb_fwd: MEM-WB旁路数据
+        # wb_fwd: WB旁路数据 (来自写回阶段的旁路数据)
+        # expected_result: 预期的ALU结果
+
         vectors = [
             # --- 旁路测试 ---
             # Case 0: 使用EX-MEM旁路数据
@@ -51,6 +73,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(100),
                 Bits(32)(0),
+                Bits(32)(50),
                 Bits(32)(120),
             ),
             # Case 1: 使用MEM-WB旁路数据
@@ -68,6 +91,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0),
                 Bits(32)(200),
+                Bits(32)(150),
                 Bits(32)(220),
             ),
             # --- WB旁路测试 ---
@@ -86,6 +110,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0),
                 Bits(32)(300),
+                Bits(32)(250),
                 Bits(32)(320),
             ),
             # Case 3: 使用WB_BYPASS的SUB指令
@@ -103,6 +128,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0),
                 Bits(32)(300),
+                Bits(32)(250),
                 Bits(32)(290),
             ),
             # Case 4: 使用WB_BYPASS的AND指令
@@ -120,6 +146,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0),
                 Bits(32)(0x12345678),
+                Bits(32)(0x87654321),
                 Bits(32)(0x12345678 & 0x0F0F0F0F),
             ),
             # Case 5: 使用WB_BYPASS的OR指令
@@ -137,6 +164,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(0),
                 Bits(32)(0x12345678),
+                Bits(32)(0x87654321),
                 Bits(32)(0x12345678 | 0x0F0F0F0F),
             ),
             # --- 旁路对比测试 ---
@@ -155,6 +183,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(100),
                 Bits(32)(200),
+                Bits(32)(150),
                 Bits(32)(300),
             ),
             # Case 7: 对比三种旁路 - SUB指令
@@ -172,6 +201,7 @@ class Driver(Module):
                 Bits(32)(0),
                 Bits(32)(200),
                 Bits(32)(100),
+                Bits(32)(50),
                 Bits(32)(100),
             ),
             # --- 分支指令测试 ---
@@ -190,6 +220,7 @@ class Driver(Module):
                 Bits(32)(8),
                 Bits(32)(0),
                 Bits(32)(0),
+                Bits(32)(50),
                 Bits(32)(0),
             ),  # 10-10=0，BEQ条件成立
             # Case 9: BNE (不等分支)
@@ -207,6 +238,7 @@ class Driver(Module):
                 Bits(32)(8),
                 Bits(32)(0),
                 Bits(32)(0),
+                Bits(32)(50),
                 Bits(32)(0xFFFFFFFE),
             ),  # 10-20=-10≠0，BNE条件成立
             # Case 10: BLT (小于分支)
@@ -224,6 +256,7 @@ class Driver(Module):
                 Bits(32)(8),
                 Bits(32)(0),
                 Bits(32)(0),
+                Bits(32)(50),
                 Bits(32)(1),
             ),  # 5<10，BLT条件成立
             # Case 11: BGE (大于等于分支)
@@ -241,6 +274,7 @@ class Driver(Module):
                 Bits(32)(8),
                 Bits(32)(0),
                 Bits(32)(0),
+                Bits(32)(50),
                 Bits(32)(0),
             ),  # 10>=5，BGE条件成立
             # Case 12: BLTU (无符号小于分支)
@@ -258,6 +292,7 @@ class Driver(Module):
                 Bits(32)(8),
                 Bits(32)(0),
                 Bits(32)(0),
+                Bits(32)(50),
                 Bits(32)(0),
             ),  # 10>=5，BLTU条件不成立
             # Case 13: BGEU (无符号大于等于分支)
@@ -275,6 +310,7 @@ class Driver(Module):
                 Bits(32)(8),
                 Bits(32)(0),
                 Bits(32)(0),
+                Bits(32)(50),
                 Bits(32)(1),
             ),  # 5<10，BGEU条件不成立
             # --- JAL/JALR 指令测试 ---
@@ -293,6 +329,7 @@ class Driver(Module):
                 Bits(32)(8),
                 Bits(32)(0),
                 Bits(32)(0),
+                Bits(32)(50),
                 Bits(32)(0x1004),
             ),  # PC+4=0x1004
             # Case 15: JALR (间接跳转)
@@ -310,6 +347,7 @@ class Driver(Module):
                 Bits(32)(8),
                 Bits(32)(0),
                 Bits(32)(0),
+                Bits(32)(50),
                 Bits(32)(0x1004),
             ),  # PC+4=0x1004，但跳转到0x2008
         ]
@@ -321,14 +359,7 @@ class Driver(Module):
 
         idx = cnt[0]
 
-        # 2. 创建EX阶段输入寄存器
-        ex_ctrl_reg = RegArray(Bits(32), 1)  # 存储控制信号
-        pc_reg = RegArray(Bits(32), 1)  # 存储PC值
-        rs1_data_reg = RegArray(Bits(32), 1)  # 存储rs1数据
-        rs2_data_reg = RegArray(Bits(32), 1)  # 存储rs2数据
-        imm_reg = RegArray(Bits(32), 1)  # 存储立即数
-
-        # 3. 组合逻辑 Mux：根据 idx 选择当前的测试向量
+        # 组合逻辑 Mux：根据 idx 选择当前的测试向量
         # 初始化默认值
         current_alu_func = Bits(16)(0)
         current_rs1_sel = Bits(4)(0)
@@ -382,13 +413,15 @@ class Driver(Module):
             current_wb_fwd = is_match.select(wb_fwd, current_wb_fwd)
             current_expected = is_match.select(expected, current_expected)
 
+        dynamic_rd_addr = (idx == idx).select(Bits(5)(1), Bits(5)(1))
+
         # 4. 构建控制信号包
         # 首先创建mem_ctrl信号
         mem_ctrl = mem_ctrl_signals.bundle(
             mem_opcode=MemOp.NONE,  # 第二部分测试不涉及内存操作
             mem_width=MemWidth.WORD,
             mem_unsigned=MemSign.UNSIGNED,
-            rd_addr=Bits(5)(1),  # 默认写入x1寄存器
+            rd_addr=dynamic_rd_addr,  # 默认写入x1寄存器
         )
 
         # 然后创建ex_ctrl信号
@@ -403,15 +436,7 @@ class Driver(Module):
             mem_ctrl=mem_ctrl,
         )
 
-        # 5. 将测试向量数据写入寄存器
-        # 使用RegArray为每个输入信号创建寄存器
-        ex_ctrl_reg[0] <= ctrl_pkt
-        pc_reg[0] <= current_pc
-        rs1_data_reg[0] <= current_rs1_data
-        rs2_data_reg[0] <= current_rs2_data
-        imm_reg[0] <= current_imm
-
-        # 6. 设置旁路数据
+        # 设置旁路数据
         ex_mem_bypass[0] = current_ex_mem_fwd
         mem_wb_bypass[0] = current_mem_wb_fwd
         wb_bypass[0] = current_wb_fwd
@@ -420,37 +445,39 @@ class Driver(Module):
         # 只有当 idx 在向量范围内时才发送 (valid)
         valid_test = idx < UInt(32)(len(vectors))
 
-        with Condition(valid_test):
-            # 打印 Driver 发出的请求，方便对比调试
-            log(
-                "Driver: idx={} alu_func={} rs1_sel={} rs2_sel={} op1_sel={} op2_sel={} branch_type={} pc=0x{:x} rs1=0x{:x} rs2=0x{:x} imm=0x{:x} ex_mem_fwd=0x{:x} mem_wb_fwd=0x{:x} wb_fwd=0x{:x} expected=0x{:x}",
-                idx,
-                current_alu_func,
-                current_rs1_sel,
-                current_rs2_sel,
-                current_op1_sel,
-                current_op2_sel,
-                current_branch_type,
-                current_pc,
-                current_rs1_data,
-                current_rs2_data,
-                current_imm,
-                current_ex_mem_fwd,
-                current_mem_wb_fwd,
-                current_wb_fwd,
-                current_expected,
-            )
+        with Condition(~valid_test):
+            finish()
 
-            # 从寄存器读取数据并调用Execution模块
-            dut.async_called(
-                ctrl=ex_ctrl_reg[0],
-                pc=pc_reg[0],
-                rs1_data=rs1_data_reg[0],
-                rs2_data=rs2_data_reg[0],
-                imm=imm_reg[0],
-            )
+        log(
+            "Driver: idx={} alu_func={} rs1_sel={} rs2_sel={} op1_sel={} op2_sel={} branch_type={} pc=0x{:x} rs1=0x{:x} rs2=0x{:x} imm=0x{:x} ex_mem_fwd=0x{:x} mem_wb_fwd=0x{:x} wb_fwd=0x{:x} expected=0x{:x}",
+            idx,
+            current_alu_func,
+            current_rs1_sel,
+            current_rs2_sel,
+            current_op1_sel,
+            current_op2_sel,
+            current_branch_type,
+            current_pc,
+            current_rs1_data,
+            current_rs2_data,
+            current_imm,
+            current_ex_mem_fwd,
+            current_mem_wb_fwd,
+            current_wb_fwd,
+            current_expected,
+        )
 
-        # [关键] 返回 cnt 和预期结果，让它们成为模块的输出
+        # 从寄存器读取数据并调用Execution模块
+        dut.async_called(
+            ctrl=ctrl_pkt,
+            pc=current_pc,
+            rs1_data=current_rs1_data,
+            rs2_data=current_rs2_data,
+            imm=current_imm,
+        )
+
+        mock_feedback.async_called()  # 触发 MockFeedback 模块
+
         return cnt, current_expected
 
 
@@ -541,13 +568,12 @@ def check(raw_output):
     ]
 
     # 使用公共验证函数
-    check_alu_results(raw_output, expected_results)
+    check_alu_results(raw_output, expected_results, "EX模块第二部分（旁路和分支指令测试）")
     check_bypass_updates(raw_output, expected_results)
-    check_branch_operations(raw_output, expected_branch_types, expected_branch_targets, expected_branch_taken)
-    check_branch_target_reg(raw_output, expected_branch_types, expected_branch_targets, expected_branch_taken)
+    check_branch_operations(raw_output, expected_branch_types, expected_branch_taken, expected_branch_targets)
+    check_branch_target_reg(raw_output, expected_branch_types, expected_branch_taken, expected_branch_targets)
 
     print("✅ EX模块第二部分测试通过！（旁路功能和分支指令均正确）")
-    print("✅ branch_target_reg正确反映了预测成功/失败状态")
 
 
 # ==============================================================================
@@ -563,6 +589,7 @@ if __name__ == "__main__":
 
         # 创建Mock模块
         mock_sram = MockSRAM()
+        mock_mem_module = MockMEM()
         mock_feedback = MockFeedback()
 
         # 创建旁路寄存器和分支目标寄存器
@@ -571,36 +598,13 @@ if __name__ == "__main__":
         wb_bypass = RegArray(Bits(32), 1)
         branch_target_reg = RegArray(Bits(32), 1)
 
-        # 创建一个虚拟的MEM模块，只用于接收EX的输出，不进行实际处理
-        class MockMEM(Module):
-            def __init__(self):
-                # 定义与 MEM 模块一致的输入端口
-                super().__init__(
-                    ports={"ctrl": Port(mem_ctrl_signals), "alu_result": Port(Bits(32))}
-                )
-                self.name = "MockMEM"
-
-            @module.combinational
-            def build(self):
-                # 接收并打印
-                ctrl, res = self.pop_all_ports(False)
-                # 打印有效数据
-                # 这里可以验证 EX 算出的结果
-                log("[MEM_Sink] Recv: ALU_Res=0x{:x} Is_Load={}", res, ctrl.is_load)
-                # 更新MEM-WB旁路寄存器
-                mem_wb_bypass[0] = res
-
-        # 创建虚拟的MEM模块
-        mock_mem_module = MockMEM()
-
         # [关键] 获取 Driver 的返回值
-        driver_cnt, driver_expected = driver.build(
+        driver.build(
             dut,
-            mock_mem_module,
             ex_mem_bypass,
             mem_wb_bypass,
             wb_bypass,
-            branch_target_reg,
+            mock_feedback,
         )
 
         # 调用Execution模块，传入所有必要的参数
