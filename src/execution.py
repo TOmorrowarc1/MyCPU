@@ -44,6 +44,17 @@ class Execution(Module):
         imm = self.imm.pop()
         mem_ctrl = mem_ctrl_signals.view(ctrl.mem_ctrl)
 
+        # 确定是否要 Flush 指令
+        flush_if = branch_target_reg[0] != Bits(32)(0)
+        final_rd = flush_if.select(Bits(5)(0), mem_ctrl.rd_addr)
+        final_mem_opcode = flush_if.select(Bits(3)(0), mem_ctrl.mem_opcode)
+        final_mem_ctrl = mem_ctrl_signals.bundle(
+            mem_opcode=final_mem_opcode,
+            mem_width=mem_ctrl.mem_width,
+            mem_unsigned=mem_ctrl.mem_unsigned,
+            rd_addr=final_rd,
+        )
+
         # 获取旁路数据
         fwd_from_mem = ex_mem_bypass[0]
         fwd_from_wb = mem_wb_bypass[0]
@@ -158,8 +169,8 @@ class Execution(Module):
         # --- 访存操作 (Store Handling) ---
         # 仅在 is_write (Store) 为真时驱动 SRAM 的 WE
         # 地址是 ALU 计算结果，数据是经过 Forwarding 的 rs2
-        is_store = mem_ctrl.mem_opcode == MemOp.STORE
-        is_load = mem_ctrl.mem_opcode == MemOp.LOAD
+        is_store = final_mem_ctrl.mem_opcode == MemOp.STORE
+        is_load = final_mem_ctrl.mem_opcode == MemOp.LOAD
 
         # 直接调用 dcache.build 处理 SRAM 操作
         dcache.build(
@@ -239,12 +250,15 @@ class Execution(Module):
             | is_taken_geu
         ) & is_branch
 
-        final_next_pc = is_branch.select(
-            is_taken.select(
-                calc_target,  # Taken
-                pc + Bits(32)(4),  # Not Taken
+        final_next_pc = flush_if.select(
+            Bits(32)(0),
+            is_branch.select(
+                is_taken.select(
+                    calc_target,  # Taken
+                    pc + Bits(32)(4),  # Not Taken
+                ),
+                ctrl.next_pc_addr,
             ),
-            ctrl.next_pc_addr,
         )
 
         # 4. 写入分支目标寄存器，供 IF 级使用
@@ -262,10 +276,10 @@ class Execution(Module):
         # --- 下一级绑定与状态反馈 ---
         # 构造发送给 MEM 的包
         # 只有两个参数：控制 + 统一数据
-        mem_call = mem_module.async_called(ctrl=mem_ctrl, alu_result=alu_result)
+        mem_call = mem_module.async_called(ctrl=final_mem_ctrl, alu_result=alu_result)
         mem_call.bind.set_fifo_depth(ctrl=1, alu_result=1)
 
         # 3. 返回状态 (供 HazardUnit 窃听)
         # rd_addr 用于记分牌/依赖检测
         # is_load 用于检测 Load-Use 冒险
-        return mem_ctrl.rd_addr, is_load
+        return final_mem_ctrl.rd_addr, is_load
