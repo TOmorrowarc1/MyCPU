@@ -28,7 +28,7 @@ class MockSRAM:
             log("SRAM: EX阶段 - WRITE addr=0x{:x} wdata=0x{:x}", addr, wdata)
 
             # 检查对齐
-            is_unaligned = addr[1:0] != Bits(2)(0)
+            is_unaligned = addr[0:1] != Bits(2)(0)
             with Condition(is_unaligned):
                 log("SRAM: Warning - Unaligned WRITE addr=0x{:x}", addr)
 
@@ -36,7 +36,7 @@ class MockSRAM:
             log("SRAM: EX阶段 - READ addr=0x{:x}", addr)
 
             # 检查对齐
-            is_unaligned = addr[1:0] != Bits(2)(0)
+            is_unaligned = addr[0:1] != Bits(2)(0)
             with Condition(is_unaligned):
                 log("SRAM: Warning - Unaligned READ addr=0x{:x}", addr)
 
