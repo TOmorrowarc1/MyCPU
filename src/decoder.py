@@ -69,7 +69,6 @@ class Decoder(Module):
         acc_alu_func = Bits(16)(0)
         acc_op1_sel = Bits(3)(0)
         acc_op2_sel = Bits(3)(0)
-        acc_tgt_sel = Bits(1)(0)
         acc_br_type = Bits(16)(0)
 
         acc_mem_op = Bits(3)(0)
@@ -138,8 +137,8 @@ class Decoder(Module):
             alu_func=acc_alu_func,
             op1_sel=acc_op1_sel,
             op2_sel=acc_op2_sel,
-            tgt_sel=acc_tgt_sel,
             branch_type=acc_br_type,
+            next_pc_addr=pc_val + Bits(32)(4),  # 默认下一条指令地址
             mem_ctrl=mem_ctrl_signals.bundle(
                 mem_opcode=acc_mem_op,
                 mem_width=acc_mem_wid,
@@ -153,6 +152,17 @@ class Decoder(Module):
             rs2_data=raw_rs2_data,
         )
 
+        # 添加日志输出
+        log(
+            "ID_Shell: pc=0x{:x} instruction=0x{:x} alu_func=0x{:x} op1_sel=0x{:x} op2_sel=0x{:x} imm=0x{:x}",
+            pc_val,
+            inst,
+            acc_alu_func,
+            acc_op1_sel,
+            acc_op2_sel,
+            acc_imm
+        )
+        
         # 返回: 预解码包, 冒险检测需要的原始信号
         return pre_pkt, rs1, rs2, acc_rs1_used, acc_rs2_used
 
@@ -172,63 +182,53 @@ class DecoderImpl(Downstream):
         # --- 3. DataHazardUnit 反馈信号 ---
         rs1_sel: Bits(4),
         rs2_sel: Bits(4),
-        stall_req: Bits(1),
+        stall_if: Bits(1),
+        branch_target_reg: Array,
     ):
+        pre_pkt = pre_decode_t.view(pre)
 
-        real_ctrl = ex_ctrl_signals.bundle(
-            # --- 静态部分 (透传) ---
-            alu_func=pre.alu_func,
-            op1_sel=pre.op1_sel,
-            op2_sel=pre.op2_sel,
-            branch_type=pre.branch_type,
-            # [关键] 透传 Next PC 预测值 (用于 EX 级 BTB 校验)
-            next_pc_addr=pre.next_pc_addr,
-            # --- 动态部分 (注入 DHU 决策) ---
-            # EX 阶段将根据这两个信号控制 ALU 前端的 Mux
+        flush_if = branch_target_reg[0] != Bits(32)(0)
+        nop_if = flush_if | stall_if
+
+        final_rd = nop_if.select(Bits(5)(0), pre_pkt.mem_ctrl.rd_addr)
+        final_mem_opcode = nop_if.select(MemOp.NONE, pre_pkt.mem_ctrl.mem_opcode)
+        final_branch_type = nop_if.select(BranchType.NO_BRANCH, pre_pkt.branch_type)
+        final_mem_ctrl = mem_ctrl_signals.bundle(
+            mem_opcode=final_mem_opcode,
+            mem_width=pre_pkt.mem_ctrl.mem_width,
+            mem_unsigned=pre_pkt.mem_ctrl.mem_unsigned,
+            rd_addr=final_rd,
+        )
+        final_ex_ctrl = ex_ctrl_signals.bundle(
+            alu_func=pre_pkt.alu_func,
+            op1_sel=pre_pkt.op1_sel,
+            op2_sel=pre_pkt.op2_sel,
             rs1_sel=rs1_sel,
             rs2_sel=rs2_sel,
-            # --- 下级控制 ---
-            mem_ctrl=pre.mem_ctrl,
+            branch_type=final_branch_type,
+            next_pc_addr=pre_pkt.next_pc_addr,
+            mem_ctrl=final_mem_ctrl,
         )
 
-        # ======================================================================
-        # 4. 刚性流控与 NOP 注入 (Stall Logic)
-        # ======================================================================
-
-        # 构造 NOP 包 (气泡)
-        # 关键是确保不写回 (rd=0, mem=NONE, branch=NO)
-        nop_ctrl = ex_ctrl_signals.const(
-            alu_func=ALUOp.NOP,
-            rs1_sel=Rs1Sel.RS1,
-            rs2_sel=Rs2Sel.RS2,
-            op1_sel=Op1Sel.ZERO,
-            op2_sel=Op2Sel.IMM,
-            branch_type=BranchType.NO_BRANCH,
-            next_pc_addr=Bits(32)(0),
-            mem_ctrl=mem_ctrl_signals.const(
-                mem_opcode=MemOp.NONE,
-                mem_width=MemWidth.WORD,
-                mem_unsigned=Bits(1)(0),
-                rd_addr=Bits(5)(0),  # 核心安全保障
-            ),
+        # 添加日志输出
+        log(
+            "ID_Impl: flush_if={} nop_if={} final_rd=0x{:x}",
+            flush_if, nop_if, final_rd
         )
-
-        # 如果 Stall，发送 NOP；否则发送真实指令
-        ctrl_to_send = stall_req.select(nop_ctrl, real_ctrl)
-
-        # ======================================================================
-        # 5. 发送与反馈 (Dispatch)
-        # ======================================================================
-
+        
         # 无论是否 Stall，都向 EX 发送数据 (刚性流水线)
         # 如果是 NOP，数据线上的值(pc, imm等)是无意义的，EX 不会使用
-        executor.async_called(
-            ctrl=ctrl_to_send,
-            pc=pre.pc,
-            rs1_data=final_rs1,  # 发送修补后的数据
-            rs2_data=final_rs2,  # 发送修补后的数据
-            imm=pre.imm,
+        call = executor.async_called(
+            ctrl=final_ex_ctrl,
+            pc=pre_pkt.pc,
+            rs1_data=pre_pkt.rs1_data,  # 发送修补后的数据
+            rs2_data=pre_pkt.rs2_data,  # 发送修补后的数据
+            imm=pre_pkt.imm,
         )
-
-        # 返回 Stall 信号给 IF (FetcherImpl)，用于冻结 PC
-        return stall_req
+        call.bind.set_fifo_depth(ctrl=1, pc=1, rs1_data=1, rs2_data=1, imm=1)
+        
+        # 添加日志输出
+        log(
+            "ID_Impl: 向Executor发送数据 - pc=0x{:x} rs1_data=0x{:x} rs2_data=0x{:x} imm=0x{:x}",
+            pre_pkt.pc, pre_pkt.rs1_data, pre_pkt.rs2_data, pre_pkt.imm
+        )
