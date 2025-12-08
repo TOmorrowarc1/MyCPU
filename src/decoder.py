@@ -150,6 +150,8 @@ class Decoder(Module):
             rs1_data=raw_rs1_data,
             rs2_data=raw_rs2_data,
         )
+        
+        log("rs1_data:0x{:x} rs2_data:0x{:x}", raw_rs1_data, raw_rs2_data)
 
         # 返回: 预解码包, 冒险检测需要的原始信号
         return pre, rs1, rs2, acc_rs1_used, acc_rs2_used
@@ -178,6 +180,19 @@ class DecoderImpl(Downstream):
         flush_if = branch_target_reg[0] != Bits(32)(0)
         nop_if = flush_if | stall_if
 
+        log(
+            "Input of ID_Impl: alu_func=0x{:x} op1_sel=0x{:x} op2_sel=0x{:x} branch_type=0x{:x} next_pc_addr=0x{:x} rs1_data=0x{:x} rs2_data=0x{:x} stall_if=0x{:x} branch_target=0x{:x}",
+            pre.alu_func,
+            pre.op1_sel,
+            pre.op2_sel,
+            pre.branch_type,
+            pre.next_pc_addr,
+            pre.rs1_data,
+            pre.rs2_data,
+            stall_if,
+            branch_target_reg[0],
+        )
+        
         final_rd = nop_if.select(Bits(5)(0), mem_ctrl.rd_addr)
         final_mem_opcode = nop_if.select(MemOp.NONE, mem_ctrl.mem_opcode)
         final_branch_type = nop_if.select(BranchType.NO_BRANCH, pre.branch_type)
@@ -198,11 +213,6 @@ class DecoderImpl(Downstream):
             mem_ctrl=final_mem_ctrl,
         )
 
-        # 添加日志输出
-        log(
-            "ID_Impl: flush_if={} nop_if={} final_rd=0x{:x}", flush_if, nop_if, final_rd
-        )
-
         # 无论是否 Stall，都向 EX 发送数据 (刚性流水线)
         # 如果是 NOP，数据线上的值(pc, imm等)是无意义的，EX 不会使用
         call = executor.async_called(
@@ -213,12 +223,3 @@ class DecoderImpl(Downstream):
             imm=pre.imm,
         )
         call.bind.set_fifo_depth(ctrl=1, pc=1, rs1_data=1, rs2_data=1, imm=1)
-
-        # 添加日志输出
-        log(
-            "ID_Impl: 向Executor发送数据 - pc=0x{:x} rs1_data=0x{:x} rs2_data=0x{:x} imm=0x{:x}",
-            pre.pc,
-            pre.rs1_data,
-            pre.rs2_data,
-            pre.imm,
-        )

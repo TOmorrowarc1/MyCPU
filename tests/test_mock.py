@@ -104,16 +104,26 @@ class MockExecutor(Module):
         rs2_data = self.rs2_data.pop()
         imm = self.imm.pop()
 
+        mem_ctrl_t = mem_ctrl_signals.view(ctrl.mem_ctrl)
+
         # 记录输入数据
         log(
-            "MockExecutor: alu_func=0x{:x} op1_sel=0x{:x} op2_sel=0x{:x} imm=0x{:x} rs1_data=0x{:x} rs2_data=0x{:x} pc=0x{:x}",
+            "MockExecutor: alu_func=0x{:x} op1_sel=0x{:x} op2_sel=0x{:x} rs1_sel=0x{:x} rs2_sel=0x{:x} branch_type=0x{:x} next_addr=0x{:x} imm=0x{:x} rs1_data=0x{:x} rs2_data=0x{:x} pc=0x{:x} mem_opcode=0x{:x} mem_width=0x{:x} mem_unsigned=0x{:x} rd_addr=0x{:x}",
             ctrl.alu_func,
             ctrl.op1_sel,
             ctrl.op2_sel,
+            ctrl.rs1_sel,
+            ctrl.rs2_sel,
+            ctrl.branch_type,
+            ctrl.next_pc_addr,
             imm,
             rs1_data,
             rs2_data,
             pc,
+            mem_ctrl_t.mem_opcode,
+            mem_ctrl_t.mem_width,
+            mem_ctrl_t.mem_unsigned,
+            mem_ctrl_t.rd_addr,
         )
 
 
