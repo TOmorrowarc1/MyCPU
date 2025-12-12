@@ -181,7 +181,6 @@ sudo dnf install gcc gcc-c++
 Assassyn-CPU/
 ├── README.md           # 项目主文档
 ├── INSTALL.md          # 详细安装指南
-├── CONTRIBUTING.md     # 贡献指南
 ├── Makefile            # 常用命令快捷方式
 ├── requirements.txt    # Python 依赖
 │
@@ -233,10 +232,6 @@ Assassyn-CPU/
    - 添加新指令
    - 优化流水线
    - 改进测试
-
-3. **贡献代码**
-   - 阅读 [CONTRIBUTING.md](CONTRIBUTING.md)
-   - 提交 Pull Request
 
 ## 获取帮助
 

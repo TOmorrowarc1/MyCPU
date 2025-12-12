@@ -3,8 +3,7 @@
 一个基于 Assassyn HDL 实现的 RISC-V 32位 CPU 设计项目
 
 > 📚 **快速开始**: 查看 [QUICKSTART.md](QUICKSTART.md) 快速上手  
-> 📖 **详细安装**: 查看 [INSTALL.md](INSTALL.md) 获取完整安装指南  
-> 🤝 **参与贡献**: 查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解如何贡献
+> 📖 **详细安装**: 查看 [INSTALL.md](INSTALL.md) 获取完整安装指南
 
 ## 项目简介
 
@@ -378,10 +377,6 @@ mkdir -p .workspace
 - 为新功能添加单元测试
 - 更新相关文档
 - 保持代码注释清晰（中文或英文）
-
-## 许可证
-
-本项目采用 MIT 许可证 - 详见 LICENSE 文件
 
 ## 联系方式
 
