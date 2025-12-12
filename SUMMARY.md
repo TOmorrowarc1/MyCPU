@@ -35,20 +35,6 @@
 - **验证安装**：4 步验证清单
 - **常见问题**：6 个安装过程中的常见问题
 
-#### 🤝 CONTRIBUTING.md (贡献指南 - 10.8KB)
-- **行为准则**：社区行为规范
-- **贡献类型**：代码、文档、测试、问题报告等
-- **开发流程**：从 Fork 到 PR 的完整流程
-- **代码规范**：Python 和 Assassyn 代码规范
-- **提交规范**：Conventional Commits 标准
-- **测试要求**：测试覆盖率和测试编写规范
-- **文档贡献**：文档格式和结构要求
-- **PR 模板**：标准化的 Pull Request 模板
-
-#### 📄 LICENSE (MIT 许可证 - 1.1KB)
-- 采用 MIT 开源许可证
-- 允许自由使用、修改和分发
-
 ### 2. 添加了完整的配置文件
 
 #### 📦 requirements.txt
@@ -121,8 +107,6 @@ Assassyn-CPU/
 ├── 📘 README.md              主文档（中文）
 ├── 🚀 QUICKSTART.md          快速开始指南
 ├── 🔧 INSTALL.md             详细安装指南
-├── 🤝 CONTRIBUTING.md        贡献指南
-├── 📄 LICENSE                MIT 许可证
 ├── 🔨 Makefile               构建和测试工具
 ├── 📦 requirements.txt       Python 依赖
 ├── 🙈 .gitignore            Git 忽略配置
@@ -137,8 +121,7 @@ Assassyn-CPU/
 1. **入门级**：QUICKSTART.md → 5 分钟快速开始
 2. **基础级**：README.md → 全面了解项目
 3. **深入级**：INSTALL.md → 详细安装步骤
-4. **贡献级**：CONTRIBUTING.md → 参与开发
-5. **专业级**：docs/ → 架构和设计细节
+4. **专业级**：docs/ → 架构和设计细节
 
 ### 4. 如何配置运行环境（回答用户问题）
 
@@ -200,9 +183,9 @@ make test-fetch
 3. 成功后再详细阅读 **README.md**
 
 ### 对于开发者
-1. 阅读 **CONTRIBUTING.md** 了解贡献流程
-2. 使用 `make help` 查看所有可用命令
-3. 遵循代码规范和测试要求
+1. 使用 `make help` 查看所有可用命令
+2. 遵循代码规范和测试要求
+3. 通过 GitHub Issues 提交问题和建议
 
 ### 对于维护者
 1. 使用 Makefile 管理项目
@@ -227,9 +210,9 @@ make test-fetch
 
 ## 统计数据
 
-- **新增文档文件**: 8 个
-- **总文档行数**: 1,432 行
-- **总文档大小**: 约 50KB
+- **新增文档文件**: 6 个
+- **总文档行数**: 约 1,200 行
+- **总文档大小**: 约 38KB
 - **Makefile 命令**: 20+ 个
 - **常见问题解答**: 10+ 个
 - **代码规范条目**: 15+ 个
