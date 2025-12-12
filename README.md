@@ -2,6 +2,10 @@
 
 一个基于 Assassyn HDL 实现的 RISC-V 32位 CPU 设计项目
 
+> 📚 **快速开始**: 查看 [QUICKSTART.md](QUICKSTART.md) 快速上手  
+> 📖 **详细安装**: 查看 [INSTALL.md](INSTALL.md) 获取完整安装指南  
+> 🤝 **参与贡献**: 查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解如何贡献
+
 ## 项目简介
 
 本项目使用 Assassyn 硬件描述语言实现了一个支持 RV32I 指令集的五级流水线 CPU。Assassyn 是一种基于 Python 的新型硬件描述语言，提供了延迟不敏感（Latency-Insensitive）的设计抽象和自动化的流水线管理。
