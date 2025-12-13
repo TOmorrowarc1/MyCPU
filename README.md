@@ -206,7 +206,13 @@ make help
 ### 构建和运行 CPU
 
 ```bash
-# 运行主程序（构建完整 CPU）
+# 运行主程序（构建完整 CPU）- 推荐方式
+python -m src.main
+
+# 或使用 Makefile（推荐）
+make build
+
+# 也可以直接运行脚本（兼容方式）
 python src/main.py
 
 # 这将：
@@ -298,7 +304,22 @@ def test_example():
 
 ## 常见问题
 
-### 1. 导入错误：`ModuleNotFoundError: No module named 'assassyn'`
+### 1. 相对导入错误：`ImportError: attempted relative import with no known parent package`
+
+**原因**: 当使用 `python src/main.py` 直接运行时，Python 将其视为脚本而非包模块。
+
+**解决方案**:
+```bash
+# 方案 1：使用模块运行方式（推荐）
+python -m src.main
+
+# 方案 2：使用 Makefile
+make build
+
+# 注意：新版本的 main.py 已经兼容两种运行方式
+```
+
+### 2. 导入错误：`ModuleNotFoundError: No module named 'assassyn'`
 
 **解决方案**:
 ```bash

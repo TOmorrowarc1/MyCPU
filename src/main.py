@@ -9,13 +9,27 @@ from assassyn.backend import elaborate, config
 from assassyn import utils
 
 # 导入所有模块
-from .control_signals import *
-from .fetch import Fetcher, FetcherImpl
-from .decoder import Decoder, DecoderImpl
-from .data_hazard import DataHazardUnit
-from .execution import Execution
-from .memory import MemoryAccess
-from .writeback import WriteBack
+# 支持两种运行方式：
+# 1. python -m src.main (推荐，使用相对导入)
+# 2. python src/main.py (直接运行，使用绝对导入)
+try:
+    # 尝试相对导入（当作为包运行时）
+    from .control_signals import *
+    from .fetch import Fetcher, FetcherImpl
+    from .decoder import Decoder, DecoderImpl
+    from .data_hazard import DataHazardUnit
+    from .execution import Execution
+    from .memory import MemoryAccess
+    from .writeback import WriteBack
+except ImportError:
+    # 回退到绝对导入（当直接运行时）
+    from src.control_signals import *
+    from src.fetch import Fetcher, FetcherImpl
+    from src.decoder import Decoder, DecoderImpl
+    from src.data_hazard import DataHazardUnit
+    from src.execution import Execution
+    from src.memory import MemoryAccess
+    from src.writeback import WriteBack
 
 # 全局工作区路径
 current_path = os.path.dirname(os.path.abspath(__file__))
