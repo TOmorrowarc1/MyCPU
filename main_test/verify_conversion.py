@@ -28,11 +28,17 @@ def verify_conversion(bin_file, exe_file, name):
         with open(bin_file, 'rb') as f:
             bin_data = f.read()
         
+        # Apply same padding logic as conversion script
+        # This ensures verification matches conversion behavior
+        if len(bin_data) % 4 != 0:
+            padding = 4 - (len(bin_data) % 4)
+            bin_data += b'\x00' * padding
+        
         # Read exe file
         with open(exe_file, 'r') as f:
             exe_lines = f.readlines()
         
-        # Parse binary data into 32-bit words
+        # Parse binary data into 32-bit words (same as conversion script)
         num_words = len(bin_data) // 4
         bin_words = []
         for i in range(num_words):

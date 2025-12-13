@@ -40,7 +40,10 @@ def convert_binary_to_exe(input_bin_path, output_exe_path, description):
         if num_bytes % 4 != 0:
             print(f"⚠️  Warning: {input_bin_path} size ({num_bytes} bytes) is not a multiple of 4")
             print(f"    Padding with zeros to align to 32-bit words")
-            # Pad with zeros
+            # Pad with zeros to ensure 4-byte alignment
+            # Note: Zero-padding at the end is safe for both data and instructions
+            # - For data: Extra zeros won't be accessed if program stays within bounds
+            # - For instructions: Extra NOPs (0x00000000) or unreachable code
             padding = 4 - (num_bytes % 4)
             binary_data += b'\x00' * padding
             num_bytes = len(binary_data)
