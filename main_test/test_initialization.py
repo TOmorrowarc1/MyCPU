@@ -144,7 +144,13 @@ def test_file_formats():
 
 
 def test_instruction_content():
-    """测试指令内容的正确性"""
+    """
+    测试指令内容的正确性
+    
+    注意：本测试专为 accumulate 程序设计。
+    如果使用其他测试程序，请更新 expected_instructions 列表，
+    或者注释掉这个测试函数的调用（在 main() 函数的 tests 列表中）。
+    """
     print("\n" + "="*70)
     print("测试指令内容")
     print("="*70)
@@ -154,6 +160,7 @@ def test_instruction_content():
     ins_file = os.path.join(workspace_dir, 'workload_ins.exe')
     
     # accumulate 程序的预期指令（前4条）
+    # 如果使用其他测试程序，请更新此列表
     expected_instructions = [
         'fe010113',  # addi sp, sp, -32
         '00812e23',  # sw s0, 28(sp)
