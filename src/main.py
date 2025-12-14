@@ -107,7 +107,15 @@ def build_cpu(depth_log=16):
         icache.name = "icache"
 
         # 寄存器堆
-        reg_file = RegArray(Bits(32), 32)
+        # 初始化 SP (x2) 指向栈顶
+        # Initialize SP (x2) to point to the top of the stack
+        # RAM 大小: 2^depth_log 字节，栈顶在最高地址
+        # RAM size: 2^depth_log bytes, stack top at highest address
+        WORD_SIZE = 4  # RISC-V 字长 / RISC-V word size (bytes)
+        STACK_TOP = (1 << depth_log) - WORD_SIZE  # 栈顶地址（字对齐）/ Stack top (word-aligned)
+        reg_init = [0] * 32
+        reg_init[2] = STACK_TOP  # x2 = sp，初始化为栈顶 / x2 = sp, initialize to stack top
+        reg_file = RegArray(Bits(32), 32, initializer=reg_init)
 
         # 全局状态寄存器
         branch_target_reg = RegArray(Bits(32), 1)
