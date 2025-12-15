@@ -7,13 +7,13 @@ from assassyn.backend import elaborate, config
 from assassyn import utils
 
 # 导入所有模块
-from control_signals import *
-from fetch import Fetcher, FetcherImpl
-from decoder import Decoder, DecoderImpl
-from data_hazard import DataHazardUnit
-from execution import Execution
-from memory import MemoryAccess
-from writeback import WriteBack
+from .control_signals import *
+from .fetch import Fetcher, FetcherImpl
+from .decoder import Decoder, DecoderImpl
+from .data_hazard import DataHazardUnit
+from .execution import Execution
+from .memory import MemoryAccess
+from .writeback import WriteBack
 
 # 全局工作区路径
 current_path = os.path.dirname(os.path.abspath(__file__))
@@ -155,8 +155,8 @@ def build_cpu(depth_log=16):
         # --- Step C: EX 阶段 ---
         ex_rd, ex_is_load = executor.build(
             mem_module=memory_unit,
-            ex_mem_bypass=ex_bypass_reg,
-            mem_wb_bypass=mem_bypass_reg,
+            ex_bypass=ex_bypass_reg,
+            mem_bypass=mem_bypass_reg,
             wb_bypass=wb_bypass_reg,
             branch_target_reg=branch_target_reg,
             dcache=dcache,
@@ -191,9 +191,10 @@ def build_cpu(depth_log=16):
         )
 
         # --- Step G: IF 阶段 ---
-        pc_reg, last_pc_reg = fetcher.build()
+        pc_reg, pc_addr, last_pc_reg = fetcher.build()
         fetcher_impl.build(
             pc_reg=pc_reg,
+            pc_addr=pc_addr,
             last_pc_reg=last_pc_reg,
             icache=icache,
             decoder=decoder,
@@ -203,6 +204,9 @@ def build_cpu(depth_log=16):
 
         # --- Step H: 辅助驱动 ---
         driver.build(fetcher=fetcher)
+
+        """RegArray exposing"""
+        sys.expose_on_top(reg_file, kind="Output")
 
     return sys
 
@@ -215,6 +219,11 @@ if __name__ == "__main__":
     # 构建 CPU 模块
     load_test_case("0to100")
     sys_builder = build_cpu(depth_log=16)
+
+    circ_path = os.path.join(workspace, f"circ.txt")
+    with open(circ_path, "w") as f:
+        print(sys_builder, file=f)
+
     print(f"🚀 Compiling system: {sys_builder.name}...")
 
     # 配置
@@ -242,5 +251,9 @@ if __name__ == "__main__":
     print(f"🏃 Running simulation (Direct Output Mode)...")
     raw = utils.run_simulator(binary_path=binary_path)
 
+    log_path = os.path.join(workspace, f"raw.log")
+    with open(log_path, "w") as f:
+        print(raw, file=f)
+        
     print(raw)
     print("🔍 Verifying output...")
