@@ -1,7 +1,6 @@
 import os
 import shutil
 
-
 from assassyn.frontend import *
 from assassyn.backend import elaborate, config
 from assassyn import utils
@@ -14,6 +13,7 @@ from .data_hazard import DataHazardUnit
 from .execution import Execution
 from .memory import MemoryAccess
 from .writeback import WriteBack
+from .btb import BTB, BTBImpl
 
 # 全局工作区路径
 current_path = os.path.dirname(os.path.abspath(__file__))
@@ -107,15 +107,14 @@ def build_cpu(depth_log=16):
         icache.name = "icache"
 
         # 寄存器堆
-        # 初始化 SP (x2) 指向栈顶
-        # Initialize SP (x2) to point to the top of the stack
-        # RAM 大小: 2^depth_log 字节，栈顶在最高地址
-        # RAM size: 2^depth_log bytes, stack top at highest address
-        WORD_SIZE = 4  # RISC-V 字长 / RISC-V word size (bytes)
-        STACK_TOP = (1 << depth_log) - WORD_SIZE  # 栈顶地址（字对齐）/ Stack top (word-aligned)
-        reg_init = [0] * 32
-        reg_init[2] = STACK_TOP  # x2 = sp，初始化为栈顶 / x2 = sp, initialize to stack top
-        reg_file = RegArray(Bits(32), 32, initializer=reg_init)
+        # Initialize register file with stack pointer (x2/sp) set to a valid stack base
+        # Stack grows downward from the top of the 64K word address space
+        # dcache has 2^depth_log words, each 4 bytes
+        # Valid byte addresses: 0x0 to ((2^depth_log - 1) * 4)
+        # x2 = sp (stack pointer) points to the last valid word address
+        # reg_init = [0] * 32
+        # reg_init[2] = ((1 << depth_log) - 1) * 4  # Set sp to top of addressable memory
+        reg_file = RegArray(Bits(32), 32)
 
         # 全局状态寄存器
         branch_target_reg = RegArray(Bits(32), 1)
@@ -126,6 +125,10 @@ def build_cpu(depth_log=16):
         # 2. 模块实例化
         fetcher = Fetcher()
         fetcher_impl = FetcherImpl()
+
+        # BTB for branch prediction
+        btb = BTB(num_entries=64, index_bits=6)
+        btb_impl = BTBImpl(num_entries=64, index_bits=6)
 
         decoder = Decoder()
         decoder_impl = DecoderImpl()
@@ -138,6 +141,9 @@ def build_cpu(depth_log=16):
         driver = Driver()
 
         # 3. 逆序构建
+        
+        # --- Step 0: BTB 构建（需要在使用前构建） ---
+        btb_valid, btb_tags, btb_targets = btb.build()
 
         # --- Step A: WB 阶段 ---
         wb_rd = writeback.build(
@@ -160,6 +166,10 @@ def build_cpu(depth_log=16):
             wb_bypass=wb_bypass_reg,
             branch_target_reg=branch_target_reg,
             dcache=dcache,
+            btb_impl=btb_impl,
+            btb_valid=btb_valid,
+            btb_tags=btb_tags,
+            btb_targets=btb_targets,
         )
 
         # --- Step D: ID 阶段 (Shell) ---
@@ -200,6 +210,10 @@ def build_cpu(depth_log=16):
             decoder=decoder,
             stall_if=stall_if,
             branch_target=branch_target_reg,
+            btb_impl=btb_impl,
+            btb_valid=btb_valid,
+            btb_tags=btb_tags,
+            btb_targets=btb_targets,
         )
 
         # --- Step H: 辅助驱动 ---
@@ -254,6 +268,6 @@ if __name__ == "__main__":
     log_path = os.path.join(workspace, f"raw.log")
     with open(log_path, "w") as f:
         print(raw, file=f)
-        
+
     print(raw)
     print("🔍 Verifying output...")
