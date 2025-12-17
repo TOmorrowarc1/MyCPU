@@ -141,6 +141,9 @@ def build_cpu(depth_log=16):
         driver = Driver()
 
         # 3. 逆序构建
+        
+        # --- Step 0: BTB 构建（需要在使用前构建） ---
+        btb_valid, btb_tags, btb_targets = btb.build()
 
         # --- Step 0: BTB 构建（需要在使用前构建） ---
         btb_valid, btb_tags, btb_targets = btb.build()
@@ -268,5 +271,6 @@ if __name__ == "__main__":
     log_path = os.path.join(workspace, f"raw.log")
     with open(log_path, "w") as f:
         print(raw, file=f)
+
     print(raw)
     print("🔍 Verifying output...")

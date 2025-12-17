@@ -16,7 +16,6 @@ class WriteBack(Module):
 
     @module.combinational
     def build(self, reg_file: Array, wb_bypass_reg: Array):
-        
         # 1. 获取输入 (Consume)
         rd, wdata = self.pop_all_ports(False)
         log("Input: rd=x{} wdata=0x{:x}", rd, wdata)
