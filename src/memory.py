@@ -19,10 +19,10 @@ class MemoryAccess(Module):
 
     @module.combinational
     def build(
-            self,
-            wb_module: Module,  # 下一级流水线 (writeback.py)
-            sram_dout: Array,  # SRAM 的输出端口 (Ref)
-            mem_bypass_reg: Array,  # 全局 Bypass 寄存器 (数据)
+        self,
+        wb_module: Module,  # 下一级流水线 (writeback.py)
+        sram_dout: Array,  # SRAM 的输出端口 (Ref)
+        mem_bypass_reg: Array,  # 全局 Bypass 寄存器 (数据)
     ):
         # 1. 弹出并解包
         ctrl, alu_result = self.pop_all_ports(False)
@@ -94,6 +94,7 @@ class MemoryAccess(Module):
         # 如果是 Load 指令，用加工后的内存数据
         # 否则 (ALU运算/JAL/LUI)，用 EX 传下来的 alu_result
         is_load = mem_opcode == MemOp.LOAD  # 检查是否为 Load 指令
+        is_store = mem_opcode == MemOp.STORE  # 检查是否为 Store 指令
         final_data = is_load.select(processed_mem_result, alu_result)
 
         # 4. 输出驱动 (Output Driver)
@@ -113,4 +114,4 @@ class MemoryAccess(Module):
 
         # 状态暴露
         # 将当前的控制包返回，供 DataHazardUnit 使用
-        return ctrl.rd_addr
+        return ctrl.rd_addr, is_store

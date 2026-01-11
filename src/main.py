@@ -9,7 +9,7 @@ from assassyn import utils
 from .control_signals import *
 from .fetch import Fetcher, FetcherImpl
 from .decoder import Decoder, DecoderImpl
-from .data_hazard import DataHazardUnit
+from .hazard_unit import HazardUnit
 from .execution import Execution
 from .memory import MemoryAccess
 from .writeback import WriteBack
@@ -125,7 +125,7 @@ def build_cpu(depth_log):
 
         decoder = Decoder()
         decoder_impl = DecoderImpl()
-        hazard_unit = DataHazardUnit()
+        hazard_unit = HazardUnit()
 
         executor = Execution()
         memory_unit = MemoryAccess()
@@ -145,14 +145,14 @@ def build_cpu(depth_log):
         )
 
         # --- Step B: MEM 阶段 ---
-        mem_rd = memory_unit.build(
+        mem_rd, mem_is_store = memory_unit.build(
             wb_module=writeback,
             sram_dout=dcache.dout,
             mem_bypass_reg=mem_bypass_reg,
         )
 
         # --- Step C: EX 阶段 ---
-        ex_rd, ex_is_load = executor.build(
+        ex_rd, ex_is_load, ex_is_store = executor.build(
             mem_module=memory_unit,
             ex_bypass=ex_bypass_reg,
             mem_bypass=mem_bypass_reg,
@@ -166,7 +166,7 @@ def build_cpu(depth_log):
         )
 
         # --- Step D: ID 阶段 (Shell) ---
-        pre_pkt, rs1, rs2, use1, use2 = decoder.build(
+        pre_pkt, rs1, rs2 = decoder.build(
             icache_dout=icache.dout,
             reg_file=reg_file,
         )
@@ -175,10 +175,10 @@ def build_cpu(depth_log):
         rs1_sel, rs2_sel, stall_if = hazard_unit.build(
             rs1_idx=rs1,
             rs2_idx=rs2,
-            rs1_used=use1,
-            rs2_used=use2,
             ex_rd=ex_rd,
             ex_is_load=ex_is_load,
+            ex_is_store=ex_is_store,
+            mem_is_store=mem_is_store,
             mem_rd=mem_rd,
             wb_rd=wb_rd,
         )
@@ -199,7 +199,7 @@ def build_cpu(depth_log):
             pc_reg=pc_reg,
             pc_addr=pc_addr,
             last_pc_reg=last_pc_reg,
-            icache=icache, 
+            icache=icache,
             decoder=decoder,
             stall_if=stall_if,
             branch_target=branch_target_reg,
@@ -224,7 +224,7 @@ def build_cpu(depth_log):
 
 if __name__ == "__main__":
     # 构建 CPU 模块
-    load_test_case("multiply")
+    load_test_case("0to100")
     sys_builder = build_cpu(depth_log=16)
 
     circ_path = os.path.join(workspace, f"circ.txt")
@@ -269,5 +269,5 @@ if __name__ == "__main__":
     log_path = os.path.join(workspace, f"verilalog_raw.log")
     with open(log_path, "w") as f:
         print(raw, file=f)
-        
+
     print("Done.")

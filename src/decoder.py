@@ -183,7 +183,7 @@ class Decoder(Module):
         )
 
         # 返回: 预解码包, 冒险检测需要的原始信号
-        return pre, rs1, rs2, acc_rs1_used, acc_rs2_used
+        return pre, rs1, rs2
 
 
 class DecoderImpl(Downstream):
