@@ -199,7 +199,7 @@ def build_cpu(depth_log):
             pc_reg=pc_reg,
             pc_addr=pc_addr,
             last_pc_reg=last_pc_reg,
-            icache=icache,
+            icache=icache, 
             decoder=decoder,
             stall_if=stall_if,
             branch_target=branch_target_reg,
