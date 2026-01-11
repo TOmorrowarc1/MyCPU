@@ -76,9 +76,6 @@ class Decoder(Module):
         acc_mem_uns = Bits(1)(0)
         acc_wb_en = Bits(1)(0)
 
-        acc_rs1_used = Bits(1)(0)
-        acc_rs2_used = Bits(1)(0)
-
         match_if = Bits(1)(0)
 
         for entry in rv32i_table:
@@ -89,8 +86,6 @@ class Decoder(Module):
                 t_b30,
                 t_imm_type,
                 t_alu,
-                t_rs1_use,
-                t_rs2_use,
                 t_op1,
                 t_op2,
                 t_mem_op,
@@ -112,8 +107,6 @@ class Decoder(Module):
             # --- B. 信号累加 (Mux Logic) ---
             # 使用 select 实现 OR 逻辑
             acc_alu_func |= match_if.select(t_alu, Bits(16)(0))
-            acc_rs1_used |= match_if.select(Bits(1)(t_rs1_use), Bits(1)(0))
-            acc_rs2_used |= match_if.select(Bits(1)(t_rs2_use), Bits(1)(0))
             acc_op1_sel |= match_if.select(t_op1, Bits(3)(0))
             acc_op2_sel |= match_if.select(t_op2, Bits(3)(0))
             acc_mem_op |= match_if.select(t_mem_op, Bits(3)(0))
@@ -162,7 +155,7 @@ class Decoder(Module):
 
         # 添加日志信息
         log(
-            "Control signals: alu_func=0x{:x} op1_sel=0x{:x} op2_sel=0x{:x} branch_type=0x{:x} mem_op=0x{:x} mem_wid=0x{:x} mem_uns=0x{:x} rd=0x{:x} rs1_used=0x{:x} rs2_used=0x{:x}",
+            "Control signals: alu_func=0x{:x} op1_sel=0x{:x} op2_sel=0x{:x} branch_type=0x{:x} mem_op=0x{:x} mem_wid=0x{:x} mem_uns=0x{:x} rd=0x{:x}",
             acc_alu_func,
             acc_op1_sel,
             acc_op2_sel,
@@ -171,8 +164,6 @@ class Decoder(Module):
             acc_mem_wid,
             acc_mem_uns,
             final_rd,
-            acc_rs1_used,
-            acc_rs2_used,
         )
         log(
             "Forwarding data: imm=0x{:x} pc=0x{:x} rs1_data=0x{:x} rs2_data=0x{:x}",

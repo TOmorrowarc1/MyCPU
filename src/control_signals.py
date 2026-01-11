@@ -114,12 +114,6 @@ class WB:
     NO = 0
 
 
-# Rs 使用标志 (用于判断是否使用 Rs 寄存器，防止虚假冒险)
-class RsUse:
-    NO = 0  # 不使用
-    YES = 1  # 使用
-
-
 # 4. 控制信号结构定义
 
 # 访存域 (MemCtrl)
