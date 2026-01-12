@@ -3,12 +3,18 @@ from assassyn.backend import elaborate, config
 from assassyn import utils
 from assassyn.frontend import SRAM
 
+
 def run_test_module(sys_builder, check_func):
     print(f"🚀 Compiling system: {sys_builder.name}...")
 
     # 1. 配置
     print(sys_builder)
-    cfg = config(verilog=False, sim_threshold=600000, idle_threshold=600000)
+    cfg = config(
+        verilog=False,
+        sim_threshold=600000,
+        resource_base="",
+        idle_threshold=600000,
+    )
 
     # 2. 生成源码
     simulator_path, verilog_path = elaborate(sys_builder, **cfg)
@@ -41,19 +47,19 @@ def run_test_module(sys_builder, check_func):
 def create_initialized_sram(width, depth, init_file=None):
     """
     创建并初始化一个 SRAM 实例
-    
+
     参数:
         width: SRAM 的位宽 (例如: 32)
         depth: SRAM 的深度 (例如: 1024)
         init_file: 初始化文件路径 (可选)
-    
+
     返回:
         初始化好的 SRAM 实例
     """
-    
+
     if init_file:
         sram = SRAM(width=width, depth=depth, init_file=init_file)
     else:
         sram = SRAM(width=width, depth=depth)
-    
+
     return sram

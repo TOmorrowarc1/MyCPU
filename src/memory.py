@@ -115,3 +115,83 @@ class MemoryAccess(Module):
         # 状态暴露
         # 将当前的控制包返回，供 DataHazardUnit 使用
         return ctrl.rd_addr, is_store
+
+
+class SingleMemory(DownStream):
+    def __init__(self):
+        super().__init__()
+        self.name = "SingleMEM"
+
+    @downstream.combinational
+    def build(
+        self,
+        # --- 来自 IF 阶段的接口 ---
+        if_addr: Value,  # 取指地址 (PC)
+        # --- 来自 EX 阶段的接口 (优先) ---
+        mem_addr: Value,  # 访存地址 (ALU Result)
+        re: Value,  # 读使能 (Load)
+        we: Value,  # 写使能 (Store)
+        wdata: Value,  # 写数据 (Store Value)
+        width: Value,  # 访存宽度 (Byte/Half/Word)
+        sram: SRAM,  # 物理 SRAM 资源引用
+    ):
+        # 0. 使用 optional 弹出端口
+        if_addr_val = if_addr.optional(Bits(16)(0))
+        mem_addr_val = mem_addr.optional(Bits(16)(0))
+        re_val = re.optional(Bits(1)(0))
+        we_val = we.optional(Bits(1)(0))
+        wdata_val = wdata.optional(Bits(32)(0))
+        width_val = width.optional(Bits(3)(1))
+
+        # 1. 定义状态寄存器
+        # 0: IDLE/READ Phase; 1: WRITE Phase
+        store_state = RegArray(Bits(1), 1, initializer=[0])
+        # 定义锁存器，用于跨周期传递 Store 信息)
+        store_addr = RegArray(Bits(32), 1)
+        store_data = RegArray(Bits(32), 1)
+        store_width = RegArray(Bits(3), 1)
+
+        # 2. 状态迁移逻辑
+        # store_state 更新
+        store_reg_refresh = we_val & ~store_state[0]
+        store_state[0] <= store_reg_refresh.select(Bits(1)(1), Bits(1)(0))
+        # 地址寄存器更新
+        store_addr[0] <= store_reg_refresh.select(mem_addr_val, Bits(32)(0))
+        # 长度独热码寄存器更新
+        store_width[0] <= store_reg_refresh.select(width_val, Bits(3)(1))
+        # 写数据寄存器更新
+        store_data[0] <= store_reg_refresh.select(wdata_val, Bits(32)(0))
+
+        # 3. SRAM 输入计算
+        # 读使能/写使能确定
+        SRAM_we = store_state[0]
+        SRAM_re = ~store_state[0]
+        # 地址计算与仲裁
+        final_mem_addr = store_state[0].select(store_addr[0], mem_addr_val)
+        ex_request = we_val | re_val | store_state[0]
+        SRAM_addr = ex_request.select(final_mem_addr, if_addr_val)
+
+        # 写数据计算
+        final_wdata = store_state[0].select(store_data[0], Bits(32)(0))
+        final_width = store_width[0]
+        # 计算位偏移 (addr[1:0] * 8)
+        shamt = final_mem_addr[1:0].concat(Bits(3)(0))
+        # 生成基础掩码
+        raw_mask = final_width.select1hot(
+            Bits(32)(0xFFFFFFFF),  # Word
+            Bits(32)(0x0000FFFF),  # Half
+            Bits(32)(0x000000FF),  # Byte
+        )
+        # 移位到目标位置
+        shifted_mask = raw_mask << shamt
+        shifted_data = final_wdata << shamt
+        # 利用掩码进行拼接，得到结果
+        SRAM_wdata = (sram.dout[0] & (~shifted_mask)) | (shifted_data & shifted_mask)
+
+        # 4. 驱动 SRAM 端口
+        sram.build(
+            addr=SRAM_addr[0:15],
+            re=SRAM_re,
+            we=SRAM_we,
+            wdata=SRAM_wdata,
+        )
