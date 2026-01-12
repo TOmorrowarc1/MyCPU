@@ -58,7 +58,7 @@ class Execution(Module):
             log("EX: Flush")
 
         final_rd = flush_if.select(Bits(5)(0), mem_ctrl.rd_addr)
-        final_mem_opcode = flush_if.select(Bits(3)(0), mem_ctrl.mem_opcode)
+        final_mem_opcode = flush_if.select(MemOp.NONE, mem_ctrl.mem_opcode)
 
         log(
             "Memory Control after Flush Check: mem_opcode=0x{:x} rd=0x{:x}",
