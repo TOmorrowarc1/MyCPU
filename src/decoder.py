@@ -14,6 +14,7 @@ class Decoder(Module):
             ports={
                 "pc": Port(Bits(32)),
                 "next_pc": Port(Bits(32)),
+                "stall": Port(Bits(1)),
             }
         )
         self.name = "Decoder"
@@ -22,12 +23,20 @@ class Decoder(Module):
     def build(self, icache_dout: Array, reg_file: Array):
 
         # 1. 获取基础输入
-        pc_val, next_pc_val = self.pop_all_ports(False)
+        pc_val, next_pc_val, stall_if = self.pop_all_ports(False)
         # 从 SRAM 输出获取指令
-        raw_inst = icache_dout[0].bitcast(Bits(32))
+        icache_inst = icache_dout[0].bitcast(Bits(32))
+        # 记录上一个周期的Ins，用于在 Stall 时稳住输入（Assassyn不允许"不输入"）
+        last_ins_reg = RegArray(Bits(32), 1, initializer=[0])
+        # 根据 Stall 信号选择指令并更新寄存器
+        raw_inst = stall_if.select(last_ins_reg[0], icache_inst)
+        last_ins_reg[0] <= raw_inst
         # 将初始化时出现的 0b0 指令替换为 NOP
         inst = (raw_inst == Bits(32)(0)).select(Bits(32)(0x00000013), raw_inst)
         log("ID: Fetched Instruction=0x{:x} at PC=0x{:x}", inst, pc_val)
+
+        # 补充：sb x0, -1(x0) 指令停机
+        halting_if = inst == Bits(32)(0xFE000FA3)
 
         # 2. 物理切片
         opcode = inst[0:6]
@@ -76,9 +85,6 @@ class Decoder(Module):
         acc_mem_uns = Bits(1)(0)
         acc_wb_en = Bits(1)(0)
 
-        acc_rs1_used = Bits(1)(0)
-        acc_rs2_used = Bits(1)(0)
-
         match_if = Bits(1)(0)
 
         for entry in rv32i_table:
@@ -89,8 +95,6 @@ class Decoder(Module):
                 t_b30,
                 t_imm_type,
                 t_alu,
-                t_rs1_use,
-                t_rs2_use,
                 t_op1,
                 t_op2,
                 t_mem_op,
@@ -112,8 +116,6 @@ class Decoder(Module):
             # --- B. 信号累加 (Mux Logic) ---
             # 使用 select 实现 OR 逻辑
             acc_alu_func |= match_if.select(t_alu, Bits(16)(0))
-            acc_rs1_used |= match_if.select(Bits(1)(t_rs1_use), Bits(1)(0))
-            acc_rs2_used |= match_if.select(Bits(1)(t_rs2_use), Bits(1)(0))
             acc_op1_sel |= match_if.select(t_op1, Bits(3)(0))
             acc_op2_sel |= match_if.select(t_op2, Bits(3)(0))
             acc_mem_op |= match_if.select(t_mem_op, Bits(3)(0))
@@ -122,6 +124,10 @@ class Decoder(Module):
             acc_wb_en |= match_if.select(Bits(1)(t_wb), Bits(1)(0))
             acc_br_type |= match_if.select(t_br, Bits(16)(0))
             acc_imm_type |= match_if.select(t_imm_type, Bits(6)(0))
+
+        with Condition(acc_imm_type == Bits(6)(0)):
+            log("ID: Illegal Instruction Encountered: 0x{:x}", inst)
+            finish()
 
         acc_imm = acc_imm_type.select1hot(
             Bits(32)(0),
@@ -145,6 +151,7 @@ class Decoder(Module):
             mem_width=acc_mem_wid,
             mem_unsigned=acc_mem_uns,
             rd_addr=final_rd,
+            halt_if=halting_if,
         )
 
         pre = pre_decode_t.bundle(
@@ -162,7 +169,7 @@ class Decoder(Module):
 
         # 添加日志信息
         log(
-            "Control signals: alu_func=0x{:x} op1_sel=0x{:x} op2_sel=0x{:x} branch_type=0x{:x} mem_op=0x{:x} mem_wid=0x{:x} mem_uns=0x{:x} rd=0x{:x} rs1_used=0x{:x} rs2_used=0x{:x}",
+            "Control signals: alu_func=0x{:x} op1_sel=0x{:x} op2_sel=0x{:x} branch_type=0x{:x} mem_op=0x{:x} mem_wid=0x{:x} mem_uns=0x{:x} rd=0x{:x}",
             acc_alu_func,
             acc_op1_sel,
             acc_op2_sel,
@@ -171,8 +178,6 @@ class Decoder(Module):
             acc_mem_wid,
             acc_mem_uns,
             final_rd,
-            acc_rs1_used,
-            acc_rs2_used,
         )
         log(
             "Forwarding data: imm=0x{:x} pc=0x{:x} rs1_data=0x{:x} rs2_data=0x{:x}",
@@ -183,7 +188,7 @@ class Decoder(Module):
         )
 
         # 返回: 预解码包, 冒险检测需要的原始信号
-        return pre, rs1, rs2, acc_rs1_used, acc_rs2_used
+        return pre, rs1, rs2
 
 
 class DecoderImpl(Downstream):
@@ -213,6 +218,7 @@ class DecoderImpl(Downstream):
         final_mem_opcode = nop_if.select(MemOp.NONE, mem_ctrl.mem_opcode)
         final_alu_func = nop_if.select(ALUOp.NOP, pre.alu_func)
         final_branch_type = nop_if.select(BranchType.NO_BRANCH, pre.branch_type)
+        final_halt_if = nop_if.select(Bits(1)(0), mem_ctrl.halt_if)
 
         with Condition(nop_if == Bits(1)(1)):
             log(
@@ -226,6 +232,7 @@ class DecoderImpl(Downstream):
             mem_width=mem_ctrl.mem_width,
             mem_unsigned=mem_ctrl.mem_unsigned,
             rd_addr=final_rd,
+            halt_if=final_halt_if,
         )
         final_ex_ctrl = ex_ctrl_signals.bundle(
             alu_func=final_alu_func,
