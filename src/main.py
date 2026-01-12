@@ -11,7 +11,7 @@ from .fetch import Fetcher, FetcherImpl
 from .decoder import Decoder, DecoderImpl
 from .hazard_unit import HazardUnit
 from .execution import Execution
-from .memory import MemoryAccess
+from .memory import MemoryAccess, SingleMemory
 from .writeback import WriteBack
 from .btb import BTB, BTBImpl
 
@@ -101,10 +101,8 @@ def build_cpu(depth_log):
 
     with sys:
         # 1. 物理资源初始化
-        dcache = SRAM(width=32, depth=1 << depth_log, init_file=data_path)
-        dcache.name = "dcache"
-        icache = SRAM(width=32, depth=1 << depth_log, init_file=ins_path)
-        icache.name = "icache"
+        cache = SRAM(width=32, depth=1 << depth_log, init_file=ins_path)
+        cache.name = "cache"
 
         # 寄存器堆
         reg_file = RegArray(Bits(32), 32)
@@ -129,6 +127,7 @@ def build_cpu(depth_log):
 
         executor = Execution()
         memory_unit = MemoryAccess()
+        memory_single = SingleMemory()
         writeback = WriteBack()
 
         driver = Driver()
@@ -147,18 +146,17 @@ def build_cpu(depth_log):
         # --- Step B: MEM 阶段 ---
         mem_rd, mem_is_store = memory_unit.build(
             wb_module=writeback,
-            sram_dout=dcache.dout,
+            sram_dout=cache.dout,
             mem_bypass_reg=mem_bypass_reg,
         )
 
         # --- Step C: EX 阶段 ---
-        ex_rd, ex_is_load, ex_is_store = executor.build(
+        ex_rd, ex_addr, ex_is_load, ex_is_store, ex_width, ex_rs2 = executor.build(
             mem_module=memory_unit,
             ex_bypass=ex_bypass_reg,
             mem_bypass=mem_bypass_reg,
             wb_bypass=wb_bypass_reg,
             branch_target_reg=branch_target_reg,
-            dcache=dcache,
             btb_impl=btb_impl,
             btb_valid=btb_valid,
             btb_tags=btb_tags,
@@ -167,7 +165,7 @@ def build_cpu(depth_log):
 
         # --- Step D: ID 阶段 (Shell) ---
         pre_pkt, rs1, rs2 = decoder.build(
-            icache_dout=icache.dout,
+            icache_dout=cache.dout,
             reg_file=reg_file,
         )
 
@@ -195,11 +193,10 @@ def build_cpu(depth_log):
 
         # --- Step G: IF 阶段 ---
         pc_reg, pc_addr, last_pc_reg = fetcher.build()
-        fetcher_impl.build(
+        current_pc = fetcher_impl.build(
             pc_reg=pc_reg,
             pc_addr=pc_addr,
             last_pc_reg=last_pc_reg,
-            icache=icache,
             decoder=decoder,
             stall_if=stall_if,
             branch_target=branch_target_reg,
@@ -209,7 +206,18 @@ def build_cpu(depth_log):
             btb_targets=btb_targets,
         )
 
-        # --- Step H: 辅助驱动 ---
+        # --- Step H: SRAM 驱动 ---
+        memory_single.build(
+            if_addr=current_pc,
+            mem_addr=ex_addr,
+            re=ex_is_load,
+            we=ex_is_store,
+            wdata=ex_rs2,
+            width=ex_width,
+            sram=cache,
+        )
+
+        # --- Step I: 辅助驱动 ---
         driver.build(fetcher=fetcher)
 
         """RegArray exposing"""

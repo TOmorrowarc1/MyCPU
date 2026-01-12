@@ -117,7 +117,7 @@ class MemoryAccess(Module):
         return ctrl.rd_addr, is_store
 
 
-class SingleMemory(DownStream):
+class SingleMemory(Downstream):
     def __init__(self):
         super().__init__()
         self.name = "SingleMEM"
@@ -136,8 +136,8 @@ class SingleMemory(DownStream):
         sram: SRAM,  # 物理 SRAM 资源引用
     ):
         # 0. 使用 optional 弹出端口
-        if_addr_val = if_addr.optional(Bits(16)(0))
-        mem_addr_val = mem_addr.optional(Bits(16)(0))
+        if_addr_val = if_addr.optional(Bits(32)(0))
+        mem_addr_val = mem_addr.optional(Bits(32)(0))
         re_val = re.optional(Bits(1)(0))
         we_val = we.optional(Bits(1)(0))
         wdata_val = wdata.optional(Bits(32)(0))
@@ -173,15 +173,15 @@ class SingleMemory(DownStream):
 
         # 写数据计算
         final_wdata = store_state[0].select(store_data[0], Bits(32)(0))
-        final_width = store_width[0]
-        # 计算位偏移 (addr[1:0] * 8)
-        shamt = final_mem_addr[1:0].concat(Bits(3)(0))
+        final_width = store_state[0].select(store_width[0],Bits(3)(1))
+        # 计算位偏移 (addr[0:1] * 8)
+        shamt = (final_mem_addr[0:1].concat(Bits(3)(0))).bitcast(UInt(5))
         # 生成基础掩码
         raw_mask = final_width.select1hot(
             Bits(32)(0xFFFFFFFF),  # Word
             Bits(32)(0x0000FFFF),  # Half
             Bits(32)(0x000000FF),  # Byte
-        )
+        ).bitcast(UInt(32))
         # 移位到目标位置
         shifted_mask = raw_mask << shamt
         shifted_data = final_wdata << shamt
@@ -189,9 +189,12 @@ class SingleMemory(DownStream):
         SRAM_wdata = (sram.dout[0] & (~shifted_mask)) | (shifted_data & shifted_mask)
 
         # 4. 驱动 SRAM 端口
+        SRAM_trunc_addr = (SRAM_addr >> Bits(32)(2))[0:15]
         sram.build(
-            addr=SRAM_addr[0:15],
+            addr=SRAM_trunc_addr,
             re=SRAM_re,
             we=SRAM_we,
             wdata=SRAM_wdata,
         )
+
+        log("SRAM Addr=0x{:x}", SRAM_trunc_addr)
