@@ -77,7 +77,7 @@ class FetcherImpl(Downstream):
             Bits(32)
         )
         predicted_next_pc = btb_hit.select(btb_predicted_target, btb_miss_target)
-
+    
         # 最终的 Next PC
         final_next_pc = predicted_next_pc
 
@@ -86,7 +86,9 @@ class FetcherImpl(Downstream):
         last_pc_reg[0] <= final_current_pc
         log(
             "IF: Next PC=0x{:x}  Next Last PC={:x}",
+            "IF: Next PC=0x{:x}  Next Last PC={:x}",
             final_next_pc,
+            # btb_hit,
             # btb_hit,
             final_current_pc,
         )
