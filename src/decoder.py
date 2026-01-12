@@ -14,6 +14,7 @@ class Decoder(Module):
             ports={
                 "pc": Port(Bits(32)),
                 "next_pc": Port(Bits(32)),
+                "stall": Port(Bits(1)),
             }
         )
         self.name = "Decoder"
@@ -22,9 +23,14 @@ class Decoder(Module):
     def build(self, icache_dout: Array, reg_file: Array):
 
         # 1. 获取基础输入
-        pc_val, next_pc_val = self.pop_all_ports(False)
+        pc_val, next_pc_val, stall_if = self.pop_all_ports(False)
         # 从 SRAM 输出获取指令
-        raw_inst = icache_dout[0].bitcast(Bits(32))
+        icache_inst = icache_dout[0].bitcast(Bits(32))
+        # 记录上一个周期的Ins，用于在 Stall 时稳住输入（Assassyn不允许"不输入"）
+        last_ins_reg = RegArray(Bits(32), 1, initializer=[0])
+        # 根据 Stall 信号选择指令并更新寄存器
+        raw_inst = stall_if.select(last_ins_reg[0], icache_inst)
+        last_ins_reg[0] <= raw_inst
         # 将初始化时出现的 0b0 指令替换为 NOP
         inst = (raw_inst == Bits(32)(0)).select(Bits(32)(0x00000013), raw_inst)
         log("ID: Fetched Instruction=0x{:x} at PC=0x{:x}", inst, pc_val)

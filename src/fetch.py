@@ -83,9 +83,11 @@ class FetcherImpl(Downstream):
         )
 
         # 如果 BTB 命中，使用预测目标；否则默认 PC + 4
-        btb_miss_target = (final_current_pc.bitcast(UInt(32)) + UInt(32)(4)).bitcast(Bits(32))
+        btb_miss_target = (final_current_pc.bitcast(UInt(32)) + UInt(32)(4)).bitcast(
+            Bits(32)
+        )
         predicted_next_pc = btb_hit.select(btb_predicted_target, btb_miss_target)
-    
+
         # 最终的 Next PC
         final_next_pc = predicted_next_pc
 
@@ -100,6 +102,10 @@ class FetcherImpl(Downstream):
         )
 
         # --- 3. 驱动下游 Decoder (流控) ---
-        # 发送到下一级，只传递 PC 值
-        call = decoder.async_called(pc=final_current_pc, next_pc=final_next_pc)
+        # 发送到下一级，传递 PC 值与 Stall 信号（使用上一周期指令信号）
+        call = decoder.async_called(
+            pc=final_current_pc,
+            next_pc=final_next_pc,
+            stall=current_stall_if,
+        )
         call.bind.set_fifo_depth(pc=1)
