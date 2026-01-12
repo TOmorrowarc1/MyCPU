@@ -53,32 +53,19 @@ def load_test_case(case_name, source_subdir="workloads"):
     # 3. 文件搬运 (Copy & Rename)
     # =========================================================
 
-    # 定义源文件名 (假设源文件叫 0to100.exe 和 0to100.data)
+    # 定义源文件名
     src_exe = os.path.join(source_dir, f"{case_name}.exe")
-    src_data = os.path.join(source_dir, f"{case_name}.data")
 
-    # 定义目标文件名 (硬件写死的固定名字)
-    # 根据你之前的 build_cpu 代码，硬件找的是 workload.exe 和 workload.data
-    dst_ins = os.path.join(workspace_dir, f"workload.exe")
-    dst_mem = os.path.join(workspace_dir, f"workload.data")
+    # 定义目标文件名
+    dst_RAM = os.path.join(workspace_dir, f"workload.exe")
 
-    # --- 复制指令文件 (.exe) -> icache ---
+    # --- 复制 RAM 文件 (.exe) -> cache ---
     if os.path.exists(src_exe):
-        shutil.copy(src_exe, dst_ins)
-        print(f"  -> Copied Instruction: {case_name}.exe ==> workload_ins.exe")
+        shutil.copy(src_exe, dst_RAM)
+        print(f"  -> Copied Instruction: {case_name}.exe ==> workload.exe")
     else:
         # 如果找不到源文件，抛出错误（因为指令文件是必须的）
         raise FileNotFoundError(f"Test case not found: {src_exe}")
-
-    # --- 复制数据文件 (.data) -> dcache ---
-    if os.path.exists(src_data):
-        shutil.copy(src_data, dst_mem)
-        print(f"  -> Copied Memory Data: {case_name}.data ==> workload_mem.exe")
-    else:
-        # 如果没有数据文件（有些简单测试不需要），创建一个空文件防止报错
-        with open(dst_mem, "w") as f:
-            pass
-        print(f"  -> No .data found, created empty: workload_mem.exe")
 
 
 class Driver(Module):
@@ -94,14 +81,12 @@ def build_cpu(depth_log):
     sys_name = "rv32i_cpu"
     sys = SysBuilder(sys_name)
 
-    data_path = os.path.join(workspace, f"workload.data")
-    ins_path = os.path.join(workspace, f"workload.exe")
-    print(f"[*] Data Path: {data_path}")
-    print(f"[*] Ins Path: {ins_path}")
+    RAM_path = os.path.join(workspace, f"workload.exe")
+    print(f"[*] Ins Path: {RAM_path}")
 
     with sys:
         # 1. 物理资源初始化
-        cache = SRAM(width=32, depth=1 << depth_log, init_file=ins_path)
+        cache = SRAM(width=32, depth=1 << depth_log, init_file=RAM_path)
         cache.name = "cache"
 
         # 寄存器堆
@@ -232,7 +217,7 @@ def build_cpu(depth_log):
 
 if __name__ == "__main__":
     # 构建 CPU 模块
-    load_test_case("a")
+    load_test_case("multiply")
     sys_builder = build_cpu(depth_log=16)
 
     circ_path = os.path.join(workspace, f"circ.txt")
