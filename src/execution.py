@@ -59,6 +59,7 @@ class Execution(Module):
 
         final_rd = flush_if.select(Bits(5)(0), mem_ctrl.rd_addr)
         final_mem_opcode = flush_if.select(MemOp.NONE, mem_ctrl.mem_opcode)
+        final_halt_if = flush_if.select(Bits(1)(0), mem_ctrl.halt_if)
 
         log(
             "Memory Control after Flush Check: mem_opcode=0x{:x} rd=0x{:x}",
@@ -71,6 +72,7 @@ class Execution(Module):
             mem_width=mem_ctrl.mem_width,
             mem_unsigned=mem_ctrl.mem_unsigned,
             rd_addr=final_rd,
+            halt_if=final_halt_if,
         )
 
         # 获取旁路数据

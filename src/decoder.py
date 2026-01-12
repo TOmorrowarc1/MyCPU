@@ -35,6 +35,9 @@ class Decoder(Module):
         inst = (raw_inst == Bits(32)(0)).select(Bits(32)(0x00000013), raw_inst)
         log("ID: Fetched Instruction=0x{:x} at PC=0x{:x}", inst, pc_val)
 
+        # 补充：sb x0, -1(x0) 指令停机
+        halting_if = inst == Bits(32)(0xFE000FA3)
+
         # 2. 物理切片
         opcode = inst[0:6]
         rd = inst[7:11]
@@ -122,10 +125,10 @@ class Decoder(Module):
             acc_br_type |= match_if.select(t_br, Bits(16)(0))
             acc_imm_type |= match_if.select(t_imm_type, Bits(6)(0))
 
-        with Condition(acc_imm_type==Bits(6)(0)):
+        with Condition(acc_imm_type == Bits(6)(0)):
             log("ID: Illegal Instruction Encountered: 0x{:x}", inst)
             finish()
-            
+
         acc_imm = acc_imm_type.select1hot(
             Bits(32)(0),
             imm_i,
@@ -148,6 +151,7 @@ class Decoder(Module):
             mem_width=acc_mem_wid,
             mem_unsigned=acc_mem_uns,
             rd_addr=final_rd,
+            halt_if=halting_if,
         )
 
         pre = pre_decode_t.bundle(
@@ -214,6 +218,7 @@ class DecoderImpl(Downstream):
         final_mem_opcode = nop_if.select(MemOp.NONE, mem_ctrl.mem_opcode)
         final_alu_func = nop_if.select(ALUOp.NOP, pre.alu_func)
         final_branch_type = nop_if.select(BranchType.NO_BRANCH, pre.branch_type)
+        final_halt_if = nop_if.select(Bits(1)(0), mem_ctrl.halt_if)
 
         with Condition(nop_if == Bits(1)(1)):
             log(
@@ -227,6 +232,7 @@ class DecoderImpl(Downstream):
             mem_width=mem_ctrl.mem_width,
             mem_unsigned=mem_ctrl.mem_unsigned,
             rd_addr=final_rd,
+            halt_if=final_halt_if,
         )
         final_ex_ctrl = ex_ctrl_signals.bundle(
             alu_func=final_alu_func,
