@@ -196,5 +196,3 @@ class SingleMemory(Downstream):
             we=SRAM_we,
             wdata=SRAM_wdata,
         )
-
-        log("SRAM Addr=0x{:x}", SRAM_trunc_addr)

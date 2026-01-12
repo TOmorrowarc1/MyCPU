@@ -122,6 +122,10 @@ class Decoder(Module):
             acc_br_type |= match_if.select(t_br, Bits(16)(0))
             acc_imm_type |= match_if.select(t_imm_type, Bits(6)(0))
 
+        with Condition(acc_imm_type==Bits(6)(0)):
+            log("ID: Illegal Instruction Encountered: 0x{:x}", inst)
+            finish()
+            
         acc_imm = acc_imm_type.select1hot(
             Bits(32)(0),
             imm_i,
