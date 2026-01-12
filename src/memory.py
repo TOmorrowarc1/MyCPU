@@ -51,7 +51,7 @@ class MemoryAccess(Module):
             log("MEM: UNSIGNED.")
         with Condition(mem_unsigned == Bits(1)(0)):
             log("MEM: SIGNED.")
-            
+
         with Condition(halt_if == Bits(1)(1)):
             log("MEM: HALT INSTRUCTION.")
             finish()
@@ -178,7 +178,7 @@ class SingleMemory(Downstream):
 
         # 写数据计算
         final_wdata = store_state[0].select(store_data[0], Bits(32)(0))
-        final_width = store_state[0].select(store_width[0],Bits(3)(1))
+        final_width = store_state[0].select(store_width[0], Bits(3)(1))
         # 计算位偏移 (addr[0:1] * 8)
         shamt = (final_mem_addr[0:1].concat(Bits(3)(0))).bitcast(UInt(5))
         # 生成基础掩码
@@ -201,3 +201,7 @@ class SingleMemory(Downstream):
             we=SRAM_we,
             wdata=SRAM_wdata,
         )
+
+        MMIO_if = SRAM_addr.bitcast(UInt(32)) >= Bits(32)(0xFFFF0000)
+        with Condition(MMIO_if & (SRAM_we == Bits(1)(1))):
+            log("MMIO 0x{:x} at address 0x{:x}", SRAM_wdata, SRAM_addr)

@@ -197,6 +197,8 @@ class SingleMemory(DownStream):
 
 写数据寄存器：上一周期为 0 且 EX S 请求存在时取 EX 写数据；其他情况取全 0。
 
+> MMIO: 共有 16 位地址空间，其中 0xFFFF0000 - 0xFFFFFFFF 用于 MMIO 设备映射，实际 SRAM 可用地址空间为 0x000000 - 0xFEFFFF。
+
 ```python
 @downstream.combinational
 def build(
