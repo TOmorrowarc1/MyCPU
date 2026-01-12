@@ -86,10 +86,7 @@ class FetcherImpl(Downstream):
         last_pc_reg[0] <= final_current_pc
         log(
             "IF: Next PC=0x{:x}  Next Last PC={:x}",
-            "IF: Next PC=0x{:x}  Next Last PC={:x}",
             final_next_pc,
-            # btb_hit,
-            # btb_hit,
             final_current_pc,
         )
 
