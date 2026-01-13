@@ -42,6 +42,7 @@ class Execution(Module):
         # 根据 __init__ 定义顺序解包
         ctrl, pc, rs1, rs2, imm = self.pop_all_ports(False)
         mem_ctrl = mem_ctrl_signals.view(ctrl.mem_ctrl)
+        wb_ctrl = wb_ctrl_signals.view(mem_ctrl.wb_ctrl)
 
         log(
             "Input: pc=0x{:x} rs1_data=0x{:x} rs2_data=0x{:x} Imm=0x{:x}",
@@ -53,27 +54,8 @@ class Execution(Module):
 
         # 确定是否要 Flush 指令
         flush_if = branch_target_reg[0] != Bits(32)(0)
-
         with Condition(flush_if == Bits(1)(1)):
             log("EX: Flush")
-
-        final_rd = flush_if.select(Bits(5)(0), mem_ctrl.rd_addr)
-        final_mem_opcode = flush_if.select(MemOp.NONE, mem_ctrl.mem_opcode)
-        final_halt_if = flush_if.select(Bits(1)(0), mem_ctrl.halt_if)
-
-        log(
-            "Memory Control after Flush Check: mem_opcode=0x{:x} rd=0x{:x}",
-            final_mem_opcode,
-            final_rd,
-        )
-
-        final_mem_ctrl = mem_ctrl_signals.bundle(
-            mem_opcode=final_mem_opcode,
-            mem_width=mem_ctrl.mem_width,
-            mem_unsigned=mem_ctrl.mem_unsigned,
-            rd_addr=final_rd,
-            halt_if=final_halt_if,
-        )
 
         # 获取旁路数据
         fwd_from_mem = ex_bypass[0]
@@ -141,39 +123,25 @@ class Execution(Module):
 
         # 加法
         add_res = (op1_signed + op2_signed).bitcast(Bits(32))
-
         # 减法
         sub_res = (op1_signed - op2_signed).bitcast(Bits(32))
-
         # 逻辑与
         and_res = alu_op1 & alu_op2
-
         # 逻辑或
         or_res = alu_op1 | alu_op2
-
         # 逻辑异或
         xor_res = alu_op1 ^ alu_op2
-
         # 逻辑左移 (使用低5位作为移位位数)
         sll_res = alu_op1 << alu_op2[0:4]
-
         # 逻辑右移 (使用低5位作为移位位数)
         srl_res = alu_op1 >> alu_op2[0:4]
-
         # 算术右移 (使用低5位作为移位位数)
         sra_res = op1_signed >> alu_op2[0:4]
         sra_res = sra_res.bitcast(Bits(32))
-
         # 有符号比较小于
         slt_res = (op1_signed < op2_signed).bitcast(Bits(32))
-
         # 无符号比较小于
         sltu_res = (alu_op1 < alu_op2).bitcast(Bits(32))
-
-        # ebreak 停机
-        with Condition((ctrl.alu_func == ALUOp.SYS) & ~flush_if):
-            log("EBREAK encountered at PC=0x{:x}, halting simulation.", pc)
-            finish()
 
         # 2. 结果选择
         alu_result = ctrl.alu_func.select1hot(
@@ -225,22 +193,6 @@ class Execution(Module):
         log("EX: ALU Result: 0x{:x}", alu_result)
         log("EX: Bypass Update: 0x{:x}", alu_result)
 
-        # --- 访存操作 (Store Handling) ---
-        # 仅在 is_write (Store) 为真时驱动 SRAM 的 WE
-        # 地址是 ALU 计算结果，数据是经过 Forwarding 的 rs2
-        is_store = final_mem_ctrl.mem_opcode == MemOp.STORE
-        is_load = final_mem_ctrl.mem_opcode == MemOp.LOAD
-        mem_width = final_mem_ctrl.mem_width
-        rd_addr = final_mem_ctrl.rd_addr
-
-        with Condition(is_store):
-            log("EX: Memory Operation: STORE")
-            log("EX: Store Address: 0x{:x}", alu_result)
-            log("EX: Store Data: 0x{:x}", real_rs2)
-        with Condition(is_load):
-            log("EX: Memory Operation: LOAD")
-            log("EX: Load Address: 0x{:x}", alu_result)
-
         # --- 分支处理 (Branch Handling) ---
         # 1. 使用专用加法器计算跳转地址，对于 JALR，基址是 rs1；对于 JAL/Branch，基址是 PC
         is_jalr = ctrl.branch_type == BranchType.JALR
@@ -267,7 +219,6 @@ class Execution(Module):
         is_taken = Bits(1)(0)
         is_branch = ctrl.branch_type != BranchType.NO_BRANCH
 
-        # 输出分支类型日志
         with Condition(ctrl.branch_type == BranchType.BEQ):
             log("EX: Branch Type: BEQ")
         with Condition(ctrl.branch_type == BranchType.BNE):
@@ -287,18 +238,16 @@ class Execution(Module):
         with Condition(ctrl.branch_type == BranchType.NO_BRANCH):
             log("EX: Branch Type: NO_BRANCH")
 
-        # 根据不同的分支类型判断分支条件
+        # 3. 根据不同的分支类型判断分支条件
         is_eq = alu_result == Bits(32)(0)
         is_lt = alu_result[0:0] == Bits(1)(1)  # 符号位为1表示小于
 
         # BEQ, BNE 使用等于判断
         is_taken_eq = (ctrl.branch_type == BranchType.BEQ) & is_eq
         is_taken_ne = (ctrl.branch_type == BranchType.BNE) & ~is_eq
-
         # BLT, BGE 使用小于判断
         is_taken_lt = (ctrl.branch_type == BranchType.BLT) & is_lt
         is_taken_ge = (ctrl.branch_type == BranchType.BGE) & ~is_lt
-
         # BLTU, BGEU 使用无符号小于判断
         is_taken_ltu = (ctrl.branch_type == BranchType.BLTU) & is_lt
         is_taken_geu = (ctrl.branch_type == BranchType.BGEU) & ~is_lt
@@ -325,14 +274,13 @@ class Execution(Module):
             ),
         )
 
-        # 4. 写入分支目标寄存器，供 IF 级使用
+        # 4. 写入分支目标寄存器，供 IF 与 ID 级使用
         branch_miss = final_next_pc != ctrl.next_pc_addr
         branch_target_reg[0] = branch_miss.select(
             final_next_pc,  # 跳转，写入目标地址
             Bits(32)(0),  # 不跳转，写 0 表示顺序执行
         )
 
-        # 输出分支目标和分支是否跳转的日志
         with Condition(is_branch):
             log("EX: Branch Target: 0x{:x}", calc_target)
             log("EX: Branch Taken: {}", is_taken == Bits(1)(1))
@@ -351,12 +299,46 @@ class Execution(Module):
             )
 
         # --- 下一级绑定与状态反馈 ---
-        # 构造发送给 MEM 的包
-        # 只有两个参数：控制 + 统一数据
+        # 构造控制信号包
+        final_rd = flush_if.select(Bits(5)(0), wb_ctrl.rd_addr)
+        final_halt_if = flush_if.select(Bits(1)(0), wb_ctrl.halt_if)
+        final_mem_opcode = flush_if.select(MemOp.NONE, mem_ctrl.mem_opcode)
+
+        log(
+            "Control after Flush Check: mem_opcode=0x{:x} rd=0x{:x}",
+            final_mem_opcode,
+            final_rd,
+        )
+
+        final_wb_ctrl = wb_ctrl_signals.bundle(
+            rd_addr=final_rd,
+            halt_if=final_halt_if,
+        )
+
+        final_mem_ctrl = mem_ctrl_signals.bundle(
+            mem_opcode=final_mem_opcode,
+            mem_width=mem_ctrl.mem_width,
+            mem_unsigned=mem_ctrl.mem_unsigned,
+            wb_ctrl=final_wb_ctrl,
+        )
+
+        # 级间信号：控制 + 数据
         mem_call = mem_module.async_called(ctrl=final_mem_ctrl, alu_result=alu_result)
         mem_call.bind.set_fifo_depth(ctrl=1, alu_result=1)
 
-        # 3. 返回状态 (供 HazardUnit 窃听)
-        # rd_addr 用于记分牌/依赖检测
-        # is_load 用于检测 Load-Use 冒险
-        return rd_addr, alu_result, is_load, is_store, mem_width, real_rs2
+        # --- 访存操作 (Store Handling) ---
+        # 将所需的信号作为引脚给出，交给 SingleMemory 处理
+        is_store = (final_mem_ctrl.mem_opcode == MemOp.STORE) & (~final_halt_if)
+        is_load = final_mem_ctrl.mem_opcode == MemOp.LOAD
+        mem_width = final_mem_ctrl.mem_width
+
+        with Condition(is_store):
+            log("EX: Memory Operation: STORE")
+            log("EX: Store Address: 0x{:x}", alu_result)
+            log("EX: Store Data: 0x{:x}", real_rs2)
+        with Condition(is_load):
+            log("EX: Memory Operation: LOAD")
+            log("EX: Load Address: 0x{:x}", alu_result)
+
+        # 返回引脚 (供 HazardUnit 与 SingleMemory 使用)
+        return final_rd, alu_result, is_load, is_store, mem_width, real_rs2

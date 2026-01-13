@@ -1,11 +1,11 @@
 # RV32I ID (Instruction Decode) 模块设计文档
 
 > **依赖**：Assassyn Framework
-> **组成**：`ID.py` (主流水线模块), `control_signals.py` (包含 Record 定义)
+> **组成**：`ID.py` (主流水线模块), `control_signals.py` (Record 定义), `instructions_table.py` (指令真值表)
 
 ## 1. 模块概述
 
-ID 模块是流水线的**控制中心**。它的核心职责是将从取指阶段（IF）获取的原始二进制指令流，翻译为后续流水线阶段（EX, MEM, WB）所需的结构化控制信号和数据操作数。
+ID 模块是流水线的**控制中心**。它的核心职责是将从 IF 获取的原始二进制指令翻译为后续流水线阶段所需的结构化控制信号和数据操作数。
 
 该设计采用 **解耦（Decoupled）** 思想，将复杂的指令解析逻辑收敛在 ID 阶段，向后传递正交化的控制信号包，并采用嵌套 Record 结构实现信号在流水线各级的逐层剥离。
 
@@ -29,7 +29,11 @@ ID 模块是流水线的**控制中心**。它的核心职责是将从取指阶�
 Record至少需要包含两个字段，因此 `rd_addr` 不定义为 `Record`
 
 ```python
-rd_addr    = Bits(5)       # 目标寄存器索引，如果是0拒绝写入。
+wb_ctrl_signals = Record(
+    rd_addr = Bits(5)       # 目标寄存器索引，如果是0拒绝写入。
+    halt_if = Bits(1)       # 是否触发仿真终止 (ECALL/EBREAK/sb x0, (-1)x0)
+)
+
 ```
 
 ### 2.2 访存域 (`MemCtrl`)
@@ -38,7 +42,7 @@ mem_ctrl_signals = Record(
     mem_opcode   = Bits(3), # 内存操作，使用 Bits(3) 静态定义 (NONE:Bits(3)(0b001), LOAD:Bits(3)(0b010), STORE:Bits(3)(0b100))
     mem_width    = Bits(3), # 访问宽度，使用 Bits(3) 静态定义 (BYTE:Bits(3)(0b001), HALF:Bits(3)(0b010), WORD:Bits(3)(0b100))
     mem_unsigned = Bits(1), # 是否无符号扩展 (LBU/LHU)
-    rd_addr = Bits(5)       # 【嵌套】携带 WB 级信号
+    wb_ctrl = wb_ctrl_signals  # 【嵌套】携带 WB 级信号
 )
 ```
 
