@@ -24,14 +24,12 @@ class MemoryAccess(Module):
         sram_dout: Array,  # SRAM 的输出端口 (Ref)
         mem_bypass_reg: Array,  # 全局 Bypass 寄存器 (数据)
     ):
-        # 1. 弹出并解包
+        # 1. 弹出并解包，提取需要的控制信号
         ctrl, alu_result = self.pop_all_ports(False)
-
-        # 提取需要的控制信号
         mem_opcode = ctrl.mem_opcode
         mem_width = ctrl.mem_width
         mem_unsigned = ctrl.mem_unsigned
-        halt_if = ctrl.halt_if
+        wb_ctrl = wb_ctrl_signals.view(ctrl.wb_ctrl)
 
         with Condition(mem_opcode == MemOp.NONE):
             log("MEM: OP NONE.")
@@ -51,10 +49,6 @@ class MemoryAccess(Module):
             log("MEM: UNSIGNED.")
         with Condition(mem_unsigned == Bits(1)(0)):
             log("MEM: SIGNED.")
-
-        with Condition(halt_if == Bits(1)(1)):
-            log("MEM: HALT INSTRUCTION.")
-            finish()
 
         # 2. SRAM 数据加工 (Data Aligner)
         # 读取 SRAM 原始数据 (32-bit)
@@ -103,23 +97,18 @@ class MemoryAccess(Module):
         final_data = is_load.select(processed_mem_result, alu_result)
 
         # 4. 输出驱动 (Output Driver)
-        # 驱动全局 Bypass 寄存器 (Side Channel)
+        # 驱动级间 Bypass 寄存器
         # 注意：如果当前是气泡 (rd=0)，写入 0 也是安全的
         mem_bypass_reg[0] = final_data
 
-        # 添加日志输出，方便测试验证
         log("MEM: Bypass <= 0x{:x}", final_data)
 
         # 驱动下一级 WB (Main Channel)
-        # 剥离外层 mem_ctrl，只传 wb_ctrl
-        wb_call = wb_module.async_called(ctrl=ctrl.rd_addr, wdata=final_data)
-
-        # 设置 FIFO 深度为 1 (刚性流水线特征)
+        wb_call = wb_module.async_called(ctrl=wb_ctrl, wdata=final_data)
         wb_call.bind.set_fifo_depth(ctrl=1, wdata=1)
 
-        # 状态暴露
-        # 将当前的控制包返回，供 DataHazardUnit 使用
-        return ctrl.rd_addr, is_store
+        # 引脚暴露 (供 HazardUnit 使用)
+        return wb_ctrl.rd_addr, is_store
 
 
 class SingleMemory(Downstream):

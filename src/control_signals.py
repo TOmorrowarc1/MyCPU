@@ -116,16 +116,21 @@ class WB:
 
 # 4. 控制信号结构定义
 
-# 访存域 (MemCtrl)
+# 写回域 (WB Ctrl)
+wb_ctrl_signals = Record(
+    rd_addr=Bits(5),  # 目标寄存器索引，如果是0拒绝写入。
+    halt_if=Bits(1),  # 是否触发仿真终止 (ECALL/EBREAK/sb x0, (-1)x0)
+)
+
+# 访存域 (MEM Ctrl)
 mem_ctrl_signals = Record(
     mem_opcode=Bits(3),  # 内存操作，独热码 (0:None, 1:Load, 2:Store)
     mem_width=Bits(3),  # 访问宽度，独热码 (0:Byte, 1:Half, 2:Word)
     mem_unsigned=Bits(1),  # 是否无符号扩展 (LBU/LHU)
-    rd_addr=Bits(5),  # 【嵌套】携带 WB 级信号
-    halt_if=Bits(1),  # 是否为停机指令
+    wb_ctrl=wb_ctrl_signals,  # 【嵌套】携带 WB 级信号
 )
 
-# 执行域 (ExCtrl)
+# 执行域 (EX Ctrl)
 ex_ctrl_signals = Record(
     # ALU 功能码，使用 Bits(16) 静态定义 (ADD:Bits(16)(0b0000000000000001), SUB:Bits(16)(0b0000000000000010), ...)
     alu_func=Bits(16),

@@ -229,9 +229,9 @@ if __name__ == "__main__":
     # 配置
     cfg = config(
         verilog=True,
-        sim_threshold=600000,
+        sim_threshold=50000,
         resource_base="",
-        idle_threshold=600000,
+        idle_threshold=50000,
     )
 
     # 生成源码

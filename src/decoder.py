@@ -35,8 +35,14 @@ class Decoder(Module):
         inst = (raw_inst == Bits(32)(0)).select(Bits(32)(0x00000013), raw_inst)
         log("ID: Fetched Instruction=0x{:x} at PC=0x{:x}", inst, pc_val)
 
-        # 补充：sb x0, -1(x0) 指令停机
-        halting_if = inst == Bits(32)(0xFE000FA3)
+        # 补充：ecall/ebreak/sb x0, -1(x0) 指令停机
+        halt_if = (
+            (inst == Bits(32)(0x00000073))
+            | (inst == Bits(32)(0x00100073))
+            | (inst == Bits(32)(0xFE000FA3))
+        )
+        with Condition(halt_if == Bits(1)(1)):
+            log("ID: Halt If = {}", halt_if)
 
         # 2. 物理切片
         opcode = inst[0:6]
@@ -125,10 +131,6 @@ class Decoder(Module):
             acc_br_type |= match_if.select(t_br, Bits(16)(0))
             acc_imm_type |= match_if.select(t_imm_type, Bits(6)(0))
 
-        with Condition(acc_imm_type == Bits(6)(0)):
-            log("ID: Illegal Instruction Encountered: 0x{:x}", inst)
-            finish()
-
         acc_imm = acc_imm_type.select1hot(
             Bits(32)(0),
             imm_i,
@@ -146,12 +148,16 @@ class Decoder(Module):
         final_rd = acc_wb_en.select(rd, Bits(5)(0))
 
         # 构造预解码包
+        wb_ctrl_t = wb_ctrl_signals.bundle(
+            rd_addr=final_rd,
+            halt_if=halt_if,
+        )
+
         mem_ctrl_t = mem_ctrl_signals.bundle(
             mem_opcode=acc_mem_op,
             mem_width=acc_mem_wid,
             mem_unsigned=acc_mem_uns,
-            rd_addr=final_rd,
-            halt_if=halting_if,
+            wb_ctrl=wb_ctrl_t,
         )
 
         pre = pre_decode_t.bundle(
@@ -210,15 +216,16 @@ class DecoderImpl(Downstream):
         branch_target_reg: Array,
     ):
         mem_ctrl = mem_ctrl_signals.view(pre.mem_ctrl)
+        wb_ctrl = wb_ctrl_signals.view(mem_ctrl.wb_ctrl)
 
         flush_if = branch_target_reg[0] != Bits(32)(0)
         nop_if = flush_if | stall_if
 
-        final_rd = nop_if.select(Bits(5)(0), mem_ctrl.rd_addr)
+        final_rd = nop_if.select(Bits(5)(0), wb_ctrl.rd_addr)
+        final_halt_if = nop_if.select(Bits(1)(0), wb_ctrl.halt_if)
         final_mem_opcode = nop_if.select(MemOp.NONE, mem_ctrl.mem_opcode)
         final_alu_func = nop_if.select(ALUOp.NOP, pre.alu_func)
         final_branch_type = nop_if.select(BranchType.NO_BRANCH, pre.branch_type)
-        final_halt_if = nop_if.select(Bits(1)(0), mem_ctrl.halt_if)
 
         with Condition(nop_if == Bits(1)(1)):
             log(
@@ -227,13 +234,18 @@ class DecoderImpl(Downstream):
                 flush_if == Bits(1)(1),
             )
 
+        final_wb_ctrl = wb_ctrl_signals.bundle(
+            rd_addr=final_rd,
+            halt_if=final_halt_if,
+        )
+
         final_mem_ctrl = mem_ctrl_signals.bundle(
             mem_opcode=final_mem_opcode,
             mem_width=mem_ctrl.mem_width,
             mem_unsigned=mem_ctrl.mem_unsigned,
-            rd_addr=final_rd,
-            halt_if=final_halt_if,
+            wb_ctrl=final_wb_ctrl,
         )
+
         final_ex_ctrl = ex_ctrl_signals.bundle(
             alu_func=final_alu_func,
             op1_sel=pre.op1_sel,
@@ -247,12 +259,12 @@ class DecoderImpl(Downstream):
 
         log(
             "Output: alu_func=0x{:x} rs1_sel=0x{:x} rs2_sel=0x{:x} branch_type=0x{:x} mem_op=0x{:x} rd=0x{:x}",
-            pre.alu_func,
+            final_alu_func,
             rs1_sel,
             rs2_sel,
-            pre.branch_type,
-            mem_ctrl.mem_opcode,
-            mem_ctrl.rd_addr,
+            final_branch_type,
+            final_mem_opcode,
+            final_rd,
         )
 
         # 无论是否 Stall，都向 EX 发送数据 (刚性流水线)
