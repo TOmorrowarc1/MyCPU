@@ -38,8 +38,8 @@ class ALUOp:
     SRA = Bits(16)(0b0000000010000000)
     OR = Bits(16)(0b0000000100000000)
     AND = Bits(16)(0b0000001000000000)
-    # 占位/直通/特殊用途
     SYS = Bits(16)(0b0000010000000000)
+    # 占位/直通/特殊用途
     NOP = Bits(16)(0b1000000000000000)
 
 
@@ -131,12 +131,7 @@ class CSRALUOp:
 class CSROpSel:
     RS1 = Bits(1)(0b0)  # 来自 rs1
     IMM = Bits(1)(0b1)  # 来自 指令立即数 (zimm)
-    
-# EX 阶段 ALU 结果选择
-class ALUResultSel:
-    ALU = Bits(2)(0b0)  # 来自 ALU 计算结果
-    CSR = Bits(2)(0b1)  # 来自 CSR 读取结果
-    
+        
 # CSR 读取结果来源选择 (One-hot, Bits(4))
 class CSRReadSel:
     CSR = Bits(4)(0b0001)          # 来自 CSR 读取结果
@@ -194,8 +189,7 @@ ex_ctrl_signals = Record(
     op2_sel=Bits(3),
     # CSR 操作数来源，使用 Bits(1) 静态定义 (RS1:Bits(1)(0b0), IMM:Bits(1)(0b1))
     csr_op_sel=Bits(1),
-    alu_result_sel=Bits(1),  # ALU 结果选择，使用 Bits(1) 静态定义 (ALU:Bits(2)(0b1), CSR 透传:Bits(2)(0b0))
-    csr_alu_op=Bits(3),  # CSR ALU 操作选择，使用 Bits(3) 静态定义 (CSR_RW:Bits(3)(0b001), CSR_RS:Bits(3)(0b010), CSR_RC:Bits(3)(0b100))  
+    csr_alu_func=Bits(3),  # CSR ALU 操作选择，使用 Bits(3) 静态定义 (CSR_RW:Bits(3)(0b001), CSR_RS:Bits(3)(0b010), CSR_RC:Bits(3)(0b100))  
     branch_type=Bits(16),  # Branch 指令功能码，使用 Bits(16) 静态定义
     next_pc_addr=Bits(32),  # 预测结果：下一条指令的地址
     mem_ctrl=mem_ctrl_signals,  # 【嵌套】携带 MEM 级信号

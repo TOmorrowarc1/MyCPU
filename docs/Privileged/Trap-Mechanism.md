@@ -317,7 +317,7 @@ Zicsr 扩展提供了 6 条基本指令，用于在 **通用寄存器 (GPR)** �
 ##### B. CSRRS (Atomic Read and Set Bit)
 *   **汇编**: `csrrs rd, csr, rs1`
 *   **Funct3**: `010`
-*   **行为**: 读取 CSR 旧值并写入 `rd`；将 `New_Val = Old_Val | rs1` 写入 CSR；如果 `rs1 == x0`，则**不进行写入**也**不考虑写入导致的异常**。
+*   **行为**: 读取 CSR 旧值并写入 `rd`；将 `New_Val = Old_Val | rs1` 写入 CSR；如果 `rs1 == x0`，则**不进行 CSR 写入**也**不考虑写入 CSR 导致的异常**。
 
 ##### C. CSRRC (Atomic Read and Clear Bit)
 *   **汇编**: `csrrc rd, csr, rs1`
@@ -331,17 +331,17 @@ Zicsr 扩展提供了 6 条基本指令，用于在 **通用寄存器 (GPR)** �
 ##### D. CSRRWI (Atomic Read/Write Immediate)
 *   **汇编**: `csrrwi rd, csr, uimm`
 *   **Funct3**: `101`
-*   **行为**: 读取 CSR 旧值并写入 `rd`；将 `uimm` (零扩展到 XLEN 位) 写入 CSR。
+*   **行为**: 读取 CSR 旧值并写入 `rd`；将 `uimm` (零扩展到 XLEN 位) 写入 CSR；如果 `rd == x0`，则不进行读取。
 
 ##### E. CSRRSI (Atomic Read and Set Immediate)
 *   **汇编**: `csrrsi rd, csr, uimm`
 *   **Funct3**: `110`
-*   **行为**: 读取 CSR 旧值并写入 `rd`；将 `New_Val = Old_Val | uimm` 写入CSR。
+*   **行为**: 读取 CSR 旧值并写入 `rd`；将 `New_Val = Old_Val | uimm` 写入CSR；如果 `uimm == 0`，则不进行写入。
 
 ##### F. CSRRCI (Atomic Read and Clear Immediate)
 *   **汇编**: `csrrci rd, csr, uimm`
 *   **Funct3**: `111`
-*   **行为**: 读取 CSR 旧值并写入 `rd`；将 `New_Val = Old_Val & (~uimm)` 写入 CSR。
+*   **行为**: 读取 CSR 旧值并写入 `rd`；将 `New_Val = Old_Val & (~uimm)` 写入 CSR；如果 `uimm == 0`，则不进行写入。
 
 ### 5.2 ECALL & EBREAK
 
