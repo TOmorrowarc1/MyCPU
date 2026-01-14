@@ -237,8 +237,7 @@ Handler 在处理完中断后，执行 `mret` 之前必须清除中断源，否�
 
 | Code | 异常名称 | 描述 | 流水线阶段 |
 | :---: | :--- | :--- | :--- |
-| **0** | Instruction Address Misaligned | 跳转目标地址未对齐 | EX |
-| **1** | Instruction Access Fault | 取指失败 (如访问受保护内存) | IF |
+| **0** | Instruction Address Misaligned | PC[1:0] != Bits(2)(0) | IF |
 | **2** | Illegal Instruction | 指令非法（无法解读，权限不足，CSR非法等） | ID |
 | **3** | Breakpoint | 执行 `ebreak` 指令 | EX |
 | **4** | Load Address Misaligned | 读取数据的地址未对齐 | EX |
@@ -246,7 +245,7 @@ Handler 在处理完中断后，执行 `mret` 之前必须清除中断源，否�
 | **8** | Environment Call from U-mode | U-mode 执行 `ecall` | EX |
 | **11** | Environment Call from M-mode | M-mode 执行 `ecall` | EX |
 
-> **注**: Code 5, 7涉及内存读写权限，目前无需关注；Code 12, 13, 15 对应缺页异常 (Page Fault)，仅在实现 S-Mode 及虚拟内存后出现。
+> **注**: Code 1, 5, 7涉及内存读写权限，目前无需关注；Code 12, 13, 15 对应缺页异常 (Page Fault)，仅在实现 S-Mode 及虚拟内存后出现。
 
 ### 4.7 mepc (Machine Exception Program Counter)
 
