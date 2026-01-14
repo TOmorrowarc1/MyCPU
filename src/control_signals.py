@@ -163,8 +163,8 @@ wb_ctrl_signals = Record(
     halt_if=Bits(1),  # 是否触发仿真终止 (sb x0, (-1)x0)
     # Privileged ISA
     is_MRET=Bits(1),  # 是否为 MRET 指令
-    Exception_Code=Bits(32),  # 异常代码 (值见上方定义)
     Exception_Valid=Bits(1),  # 异常代码有效标志
+    Exception_Code=Bits(32),  # 异常代码 (值见上方定义)
     Exception_Val=Bits(32),  # 异常相关值 (如：faulting address)
     PC=Bits(32),  # 当前指令的 PC (用于异常处理)
     csr_waddr=Bits(12),  # CSR 寄存器地址 (12-bit)
