@@ -157,3 +157,8 @@ CPU 仅在 **WB 阶段开始**时观察全局使能信号与 MIP 高位信号，
 | `Exception_Val`     | Bits(32) 来自 WB 阶段，异常附加信息       |
 | `WB_PC`             | Bits(32) 来自 WB 阶段，该阶段指令 PC      |
 | `MEM_PC`            | Bits(32) 来自 MEM 阶段，该阶段指令 PC     |
+
+下面我们总结各个阶段中新添加的逻辑与处理：
+IF 阶段新增：Flush_pc 在原来的branch_flush基础上又增加了来自 CSR（mepc,mtvec）的Trap_flush，优先级为Trap>branch>stall，不过处理trap的逻辑和branch没有区别；需要增加对instruction addr misalign 的检验，控制信息中需要增加 Exception_Vaild,cause,val向后传递。
+EX 阶段新增：Flush 情况添加；增加用于处理 CSR 计算的 CSR ALU 及其操作数，同时 ALU result Mux 需要增加透传 CSR 读数据的选择；以及作为辅助的 CSR 计算操作数旁路选择数，旁路接口输入；
+ID 阶段新增：同样增添 Flush 信号，解析逻辑中
