@@ -155,6 +155,7 @@ CPU 仅在 **WB 阶段开始**时观察全局使能信号与 MIP 高位信号，
 | `Exception_Vaild`   | Bits(1)  来自 WB 阶段，指令携带的控制信号  |
 | `Exception_Code`    | Bits(32) 来自 WB 阶段，异常代码           |
 | `Exception_Val`     | Bits(32) 来自 WB 阶段，异常附加信息       |
+| `is_mret`           | Bits(1)  来自 WB 阶段，指示 MRET 指令     |
 | `WB_PC`             | Bits(32) 来自 WB 阶段，该阶段指令 PC      |
 | `MEM_PC`            | Bits(32) 来自 MEM 阶段，该阶段指令 PC     |
 
