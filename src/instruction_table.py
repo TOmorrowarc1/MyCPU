@@ -110,6 +110,7 @@ rv32i_table = [
     # 由 Execution 中的 finish() 逻辑拦截，直接停止模拟。
     ('ecall', OP_SYSTEM, 0x0, 0, ImmType.I, ALUOp.SYS, Op1Sel.RS1, Op2Sel.IMM, MemOp.NONE,
      MemWidth.WORD, Bits(1)(0), WB.NO, BranchType.NO_BRANCH),
+    # ebreak 编码仅立即数字段不同，这里沿用相同的解码路径，便于 halt 处理
     ('ebreak', OP_SYSTEM, 0x0, 0, ImmType.I, ALUOp.SYS, Op1Sel.RS1, Op2Sel.IMM, MemOp.NONE,
      MemWidth.WORD, Bits(1)(0), WB.NO, BranchType.NO_BRANCH),
 ]
