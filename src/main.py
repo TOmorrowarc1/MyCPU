@@ -1,5 +1,6 @@
 import os
 import shutil
+from importlib.util import find_spec
 
 from assassyn.frontend import *
 from assassyn.backend import elaborate, config
@@ -217,7 +218,7 @@ def build_cpu(depth_log):
 
 if __name__ == "__main__":
     # 构建 CPU 模块
-    load_test_case("multiply")
+    load_test_case("magic")
     sys_builder = build_cpu(depth_log=16)
 
     circ_path = os.path.join(workspace, f"circ.txt")
@@ -229,9 +230,9 @@ if __name__ == "__main__":
     # 配置
     cfg = config(
         verilog=True,
-        sim_threshold=50000,
+        sim_threshold=1000000,
         resource_base="",
-        idle_threshold=50000,
+        idle_threshold=1000000,
     )
 
     # 生成源码
@@ -257,10 +258,13 @@ if __name__ == "__main__":
         print(raw, file=f)
 
     # 运行verilog模拟器，捕获输出
-    print(f"🏃 Running simulation(verilog)...")
-    raw = utils.run_verilator(verilog_path)
-    log_path = os.path.join(workspace, f"verilalog_raw.log")
-    with open(log_path, "w") as f:
-        print(raw, file=f)
+    if find_spec("cocotb.runner") is None:
+        print("⚠️ Skipping cocotb Verilator run because cocotb is not installed. Install with `pip install cocotb` to enable.")
+    else:
+        print(f"🏃 Running simulation(verilog)...")
+        raw = utils.run_verilator(verilog_path)
+        log_path = os.path.join(workspace, f"verilog_raw.log")
+        with open(log_path, "w") as f:
+            print(raw, file=f)
 
     print("Done.")
