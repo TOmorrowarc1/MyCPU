@@ -105,14 +105,16 @@ CPU 仅在 **WB 阶段开始**时观察全局使能信号与 MIP 高位信号，
 * **mvendorid** (`0xF11`), **marchid** (`0xF12`), **mimpid** (`0xF13`), **mhartid** (`0xF14`), **mconfigptr** (`0xF15`), **medeleg** (`0x302`), **mideleg** (`0x303`), **mcounteren** (`0x306`), **mstatush** (`0x310`), **medelegh**(`0x312`), **mtinst**(`0x34A`), **mtval2**(`0x34B`): 只读，返回 0。
 
 > **注**: 所有未列出的 CSR 视为不存在，访问时直接报错。
+> **注**: 使用 `0x00` 作为 CSR 写入地址表示不进行任何写入操作。
 
 ### 4.2 CSRs 总体封装
 将 CSR 作为一个整体抽象成如下接口，处理与流水线的交互、Trap 逻辑和原子性更新。
 
 #### 4.2.1 读写控制逻辑
 *   **读取 (ID Stage)**: 组合逻辑。
-    *   根据 `Read_Addr Bits(12)` 多路选择输出 `CSR_read_data Bits(32)`。所有引发 `illegal instruction` 的指令均在 ID 阶段被筛出并消除一切会导致错误的副作用。
-    *   Forwarding: 如果 WB 阶段正在写同一个 CSR，直接将 WB 的写数据旁路到 ID 的读端口（解决 RAW 冒险）。
+    *   根据 `Read_Addr Bits(12)` 多路选择输出 `CSR_read_data Bits(32)`。
+    >   所有引发 `illegal instruction` 的指令均在 ID 阶段被筛出并消除一切会导致错误的副作用。
+
 *   **指令写入 (WB Stage)**:
     *   接收合法的 `csr_waddr Bits(12)`、`csr_wdata Bits(32)`。
 

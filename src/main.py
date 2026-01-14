@@ -98,6 +98,28 @@ def build_cpu(depth_log):
         ex_bypass_reg = RegArray(Bits(32), 1)
         mem_bypass_reg = RegArray(Bits(32), 1)
 
+        # CSR 寄存器
+        # Current_Mode: 当前权限模式 (2位，合法值为 00: U-mode 与 11: M-mode)
+        current_mode_reg = RegArray(Bits(2), 1, initializer=[0b11])
+        # misa (0x301): 只读，硬连线为 0x40000100 (RV32I)
+        misa_reg = RegArray(Bits(32), 1, initializer=[0x00001800])
+        # mstatus (0x300): 当前处理器状态，包含 MPP、MPIE、MIE 等字段
+        mstatus_reg = RegArray(Bits(32), 1)
+        # mie (0x304): Machine Interrupt Enable，包含 MEIE、MTIE、MSIE 字段
+        mie_reg = RegArray(Bits(32), 1)
+        # mip (0x344): Machine Interrupt Pending，包含 MEIP、MTIP、MSIP 字段
+        mip_reg = RegArray(Bits(32), 1)
+        # mtvec (0x305): Trap 向量基地址与模式
+        mtvec_reg = RegArray(Bits(32), 1)
+        # mepc (0x341): Trap 发生时保存 PC
+        mepc_reg = RegArray(Bits(32), 1)
+        # mcause (0x342): Trap 发生时保存原因
+        mcause_reg = RegArray(Bits(32), 1)
+        # mtval (0x343): Trap 发生时保存附加信息
+        mtval_reg = RegArray(Bits(32), 1)
+        # mtscratch (0x340): 可读写，任意用途寄存器
+        mtscratch_reg = RegArray(Bits(32), 1)
+
         # 2. 模块实例化
         fetcher = Fetcher()
         fetcher_impl = FetcherImpl()
