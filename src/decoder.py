@@ -12,124 +12,120 @@ class Decoder(Module):
     def __init__(self):
         super().__init__(
             ports={
-                "pc": Port(Bits(32)),
+                "ctrl": Port(id_ctrl_signals),
                 "next_pc": Port(Bits(32)),
-                "stall": Port(Bits(1)),
             }
         )
         self.name = "Decoder"
 
     @module.combinational
-    def build(self, icache_dout: Array, reg_file: Array):
+    def build(
+        self,
+        icache_dout: Array,
+        reg_file: Array,
+        current_mode: Array,
+    ):
 
-        # 1. 获取基础输入
-        pc_val, next_pc_val, stall_if = self.pop_all_ports(False)
+        # 内部寄存器: 记录上一个周期的Ins，用于在 Stall 时稳住输入
+        last_ins_reg = RegArray(Bits(32), 1, initializer=[0])
+
+        # 1. 获取输入信号
+        id_ctrl, next_pc_val = self.pop_all_ports(False)
+        fetch_exception_vaild = id_ctrl.Exception_Valid
+        stall_if = id_ctrl.Stall_IF
+        pc = id_ctrl.PC
         # 从 SRAM 输出获取指令
         icache_inst = icache_dout[0].bitcast(Bits(32))
-        # 记录上一个周期的Ins，用于在 Stall 时稳住输入（Assassyn不允许"不输入"）
-        last_ins_reg = RegArray(Bits(32), 1, initializer=[0])
-        # 根据 Stall 信号选择指令并更新寄存器
-        raw_inst = stall_if.select(last_ins_reg[0], icache_inst)
+
+        # 2. 选择指令与特殊约定:
+        # Stall > IF EXCEPTION 根据信号选择指令并更新寄存器
+        NOP = Bits(32)(0x00000013)  # NOP
+        fetch_inst = fetch_exception_vaild.select(NOP, icache_inst)
+        raw_inst = stall_if.select(last_ins_reg[0], fetch_inst)
         last_ins_reg[0] <= raw_inst
-        # 将初始化时出现的 0b0 指令替换为 NOP
-        inst = (raw_inst == Bits(32)(0)).select(Bits(32)(0x00000013), raw_inst)
-        log("ID: Fetched Instruction=0x{:x} at PC=0x{:x}", inst, pc_val)
-
-        # 补充：ecall/ebreak/sb x0, -1(x0) 指令停机
-        halt_if = (
-            (inst == Bits(32)(0x00000073))
-            | (inst == Bits(32)(0x00100073))
-            | (inst == Bits(32)(0xFE000FA3))
-        )
+        # 将初始化时出现的 0b0 指令替换为 NOP (TODO)
+        inst = (raw_inst == Bits(32)(0)).select(NOP, raw_inst)
+        log("ID: Fetched Instruction=0x{:x} at PC=0x{:x}", inst, pc)
+        # 补充：sb x0, -1(x0) 指令停机
+        halt_if = inst == Bits(32)(0xFE000FA3)
         with Condition(halt_if == Bits(1)(1)):
-            log("ID: Halt If = {}", halt_if)
+            log("ID: Halt Ins in ID with pc=0x{:x}", pc)
 
-        # 2. 物理切片
-        opcode = inst[0:6]
+        # 3. 指令解析
+        # 3.1 字段切片
         rd = inst[7:11]
-        funct3 = inst[12:14]
         rs1 = inst[15:19]
         rs2 = inst[20:24]
-        bit30 = inst[30:30]
-
-        # 3. 立即数并行生成
+        csr_addr = inst[20:31]
+        # 立即数并行生成
         sign = inst[31:31]
-
         # I-Type: [31]*20 | [31:20]
         pad_20 = get_pad(20, 0xFFFFF, sign)
         imm_i = concat(pad_20, inst[20:31])
-
         # S-Type: [31]*20 | [31:25] | [11:7]
         imm_s = concat(pad_20, inst[25:31], inst[7:11])
-
         # B-Type: [31]*19 | [31] | [7] | [30:25] | [11:8] | 0
         pad_19 = get_pad(19, 0x7FFFF, sign)
         imm_b = concat(
             pad_19, inst[31:31], inst[7:7], inst[25:30], inst[8:11], Bits(1)(0)
         )
-
         # U-Type: [31:12] | 0*12
         imm_u = concat(inst[12:31], Bits(12)(0))
-
         # J-Type: [31]*11 | [31] | [19:12] | [20] | [30:21] | 0
         pad_11 = get_pad(11, 0x7FF, sign)
         imm_j = concat(
             pad_11, inst[31:31], inst[12:19], inst[20:20], inst[21:30], Bits(1)(0)
         )
+        # Z-Type: CSR 指令立即数 (零扩展)
+        imm_z = concat(Bits(27)(0), inst[15:20])
 
-        # 4. 查表译码 (Signal Accumulation Loop)
-
+        # 3.2 查表译码 (Signal Accumulation Loop)
         # 初始化累加器
         acc_alu_func = Bits(16)(0)
         acc_op1_sel = Bits(3)(0)
         acc_op2_sel = Bits(3)(0)
         acc_imm_type = Bits(6)(0)
         acc_br_type = Bits(16)(0)
-
         acc_mem_op = Bits(3)(0)
         acc_mem_wid = Bits(3)(0)
         acc_mem_uns = Bits(1)(0)
-        acc_wb_en = Bits(1)(0)
+        # CSR 相关控制信号累加器
+        acc_csr_op_sel = Bits(1)(0)
+        acc_csr_alu_op = Bits(3)(0)
+        acc_csr_re = Bits(1)(0)
+        acc_csr_we = Bits(1)(0)
 
         match_if = Bits(1)(0)
-
+        has_match = Bits(1)(0)
         for entry in rv32i_table:
             (
                 _,
-                t_op,
-                t_f3,
-                t_b30,
+                (t_value, t_mask),
                 t_imm_type,
-                t_alu,
-                t_op1,
-                t_op2,
-                t_mem_op,
-                t_mem_wid,
-                t_mem_sgn,
-                t_wb,
-                t_br,
+                (t_alu_func, t_op1_sel, t_op2_sel, t_branch_type),
+                (t_mem_op, t_mem_width, t_mem_sign),
+                (t_csr_op_sel, t_csr_alu_op, t_csr_re, t_csr_we),
             ) = entry
 
             # --- A. 匹配逻辑 ---
-            match_if = opcode == t_op
-
-            if t_f3 is not None:
-                match_if &= funct3 == Bits(3)(t_f3)
-
-            if t_b30 is not None:
-                match_if &= bit30 == Bits(1)(t_b30)
-
+            # 使用 BP 函数返回的 (value, mask) 进行匹配
+            match_if = (inst & t_mask) == t_value
+            has_match |= match_if
             # --- B. 信号累加 (Mux Logic) ---
             # 使用 select 实现 OR 逻辑
-            acc_alu_func |= match_if.select(t_alu, Bits(16)(0))
-            acc_op1_sel |= match_if.select(t_op1, Bits(3)(0))
-            acc_op2_sel |= match_if.select(t_op2, Bits(3)(0))
-            acc_mem_op |= match_if.select(t_mem_op, Bits(3)(0))
-            acc_mem_wid |= match_if.select(t_mem_wid, Bits(3)(0))
-            acc_mem_uns |= match_if.select(t_mem_sgn, Bits(1)(0))
-            acc_wb_en |= match_if.select(Bits(1)(t_wb), Bits(1)(0))
-            acc_br_type |= match_if.select(t_br, Bits(16)(0))
             acc_imm_type |= match_if.select(t_imm_type, Bits(6)(0))
+            acc_alu_func |= match_if.select(t_alu_func, Bits(16)(0))
+            acc_op1_sel |= match_if.select(t_op1_sel, Bits(3)(0))
+            acc_op2_sel |= match_if.select(t_op2_sel, Bits(3)(0))
+            acc_br_type |= match_if.select(t_branch_type, Bits(16)(0))
+            acc_mem_op |= match_if.select(t_mem_op, Bits(3)(0))
+            acc_mem_wid |= match_if.select(t_mem_width, Bits(3)(0))
+            acc_mem_uns |= match_if.select(t_mem_sign, Bits(1)(0))
+            # CSR 相关信号累加
+            acc_csr_op_sel |= match_if.select(t_csr_op_sel, Bits(1)(0))
+            acc_csr_alu_op |= match_if.select(t_csr_alu_op, Bits(3)(0))
+            acc_csr_re |= match_if.select(t_csr_re, Bits(1)(0))
+            acc_csr_we |= match_if.select(t_csr_we, Bits(1)(0))
 
         acc_imm = acc_imm_type.select1hot(
             Bits(32)(0),
@@ -138,19 +134,56 @@ class Decoder(Module):
             imm_b,
             imm_u,
             imm_j,
+            imm_z,
         )
 
-        # 5. 读取寄存器堆 & 打包
+        # 4. 异常处理逻辑
+        # 当前权限
+        curr_mode = current_mode[0]
+        # CSR 访问权限检查
+        csr_addr_high2 = csr_addr[10:12]
+        csr_priv_level = csr_addr_high2
+        csr_access_illegal = Bits(1)(0)
+        with Condition(acc_csr_re == Bits(1)(1) | acc_csr_we == Bits(1)(1)): 
+            csr_access_illegal = (csr_priv_level > curr_mode).select(
+                Bits(1)(1), Bits(1)(0)
+            )
+        # CSR 指令 rd 与 rs 处理（TODO）
+        # 检测非法指令
+        is_illegal_inst = has_match == Bits(1)(0)
+        # 检测 ECALL 指令 (inst == 0x00000073)
+        is_ecall = inst == Bits(32)(0x00000073)
+        # 检测 EBREAK 指令 (inst == 0x00100073)
+        is_ebreak = inst == Bits(32)(0x00100073)
+        # 检测 MRET 指令 (inst == 0x30200073)
+        is_mret = inst == Bits(32)(0x30200073)
+        # 设置异常代码
+        exception_valid = fetch_exception_vaild | is_illegal_inst | is_ecall | is_ebreak
+        exception_code = is_ecall.select(EXC_ECALL_MMODE)
+        exception_val = Bits(32)(0)
+
+        with Condition(is_ecall == Bits(1)(1)):
+            exception_valid = Bits(1)(1)
+            exception_code = EXC_ECALL_MMODE
+
+        with Condition(is_ebreak == Bits(1)(1)):
+            exception_valid = Bits(1)(1)
+            exception_code = EXC_EBREAK
+
+        # 6. 读取寄存器堆 & 打包
         raw_rs1_data = reg_file[rs1]
         raw_rs2_data = reg_file[rs2]
-
-        # 处理 rd: 如果不需要写回，强制为 0 (Implicit Write Enable)
-        final_rd = acc_wb_en.select(rd, Bits(5)(0))
 
         # 构造预解码包
         wb_ctrl_t = wb_ctrl_signals.bundle(
             rd_addr=final_rd,
             halt_if=halt_if,
+            is_MRET=is_mret,
+            Exception_Valid=exception_valid,
+            Exception_Code=exception_code,
+            Exception_Val=exception_val,
+            PC=pc,
+            csr_waddr=csr_addr,
         )
 
         mem_ctrl_t = mem_ctrl_signals.bundle(
@@ -162,20 +195,22 @@ class Decoder(Module):
 
         pre = pre_decode_t.bundle(
             alu_func=acc_alu_func,
+            alu_result_sel=Bits(1)(0),
+            csr_alu_op=acc_csr_alu_op,
             op1_sel=acc_op1_sel,
             op2_sel=acc_op2_sel,
             branch_type=acc_br_type,
             next_pc_addr=next_pc_val,
             mem_ctrl=mem_ctrl_t,
-            imm=acc_imm,
-            pc=pc_val,
             rs1_data=raw_rs1_data,
             rs2_data=raw_rs2_data,
+            csr_data=Bits(32)(0),
+            imm=acc_imm,
         )
 
         # 添加日志信息
         log(
-            "Control signals: alu_func=0x{:x} op1_sel=0x{:x} op2_sel=0x{:x} branch_type=0x{:x} mem_op=0x{:x} mem_wid=0x{:x} mem_uns=0x{:x} rd=0x{:x}",
+            "Control signals: alu_func=0x{:x} op1_sel=0x{:x} op2_sel=0x{:x} branch_type=0x{:x} mem_op=0x{:x} mem_wid=0x{:x} mem_uns=0x{:x} rd=0x{:x} csr_op_sel=0x{:x} csr_alu_op=0x{:x} csr_re=0x{:x} csr_we=0x{:x}",
             acc_alu_func,
             acc_op1_sel,
             acc_op2_sel,
@@ -184,13 +219,25 @@ class Decoder(Module):
             acc_mem_wid,
             acc_mem_uns,
             final_rd,
+            acc_csr_op_sel,
+            acc_csr_alu_op,
+            acc_csr_re,
+            acc_csr_we,
         )
         log(
-            "Forwarding data: imm=0x{:x} pc=0x{:x} rs1_data=0x{:x} rs2_data=0x{:x}",
+            "Forwarding data: imm=0x{:x} pc=0x{:x} rs1_data=0x{:x} rs2_data=0x{:x} csr_addr=0x{:x}",
             acc_imm,
-            pc_val,
+            pc,
             raw_rs1_data,
             raw_rs2_data,
+            csr_addr,
+        )
+        log(
+            "Exception: valid=0x{:x} code=0x{:x} val=0x{:x} is_mret=0x{:x}",
+            exception_valid,
+            exception_code,
+            exception_val,
+            is_mret,
         )
 
         # 返回: 预解码包, 冒险检测需要的原始信号
