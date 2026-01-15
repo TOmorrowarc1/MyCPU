@@ -28,7 +28,7 @@ def BP(pattern_str):
 
 # RV32I 指令真值表
 # 表格列定义:
-# Key, BP, ImmType, ALU_Func, Op1, Op2, Mem_Op, Width, Mem_Sign, branch_type, csr_op_sel, csr_alu_op, csr_re, csr_we
+# Key, BP, ImmType, (ALU_Func, Op1, Op2, branch_type), (Mem_Op, Width, Mem_Sign), WB, (csr_op_sel, csr_alu_op, csr_re, csr_we)
 
 rv32i_table = [
     # --- R-Type ---
@@ -38,6 +38,7 @@ rv32i_table = [
         ImmType.R,
         (ALUOp.ADD, Op1Sel.RS1, Op2Sel.RS2, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -46,6 +47,7 @@ rv32i_table = [
         ImmType.R,
         (ALUOp.SUB, Op1Sel.RS1, Op2Sel.RS2, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -54,6 +56,7 @@ rv32i_table = [
         ImmType.R,
         (ALUOp.SLL, Op1Sel.RS1, Op2Sel.RS2, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -62,6 +65,7 @@ rv32i_table = [
         ImmType.R,
         (ALUOp.SLT, Op1Sel.RS1, Op2Sel.RS2, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -70,6 +74,7 @@ rv32i_table = [
         ImmType.R,
         (ALUOp.SLTU, Op1Sel.RS1, Op2Sel.RS2, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -78,6 +83,7 @@ rv32i_table = [
         ImmType.R,
         (ALUOp.XOR, Op1Sel.RS1, Op2Sel.RS2, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -86,6 +92,7 @@ rv32i_table = [
         ImmType.R,
         (ALUOp.SRL, Op1Sel.RS1, Op2Sel.RS2, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -94,6 +101,7 @@ rv32i_table = [
         ImmType.R,
         (ALUOp.SRA, Op1Sel.RS1, Op2Sel.RS2, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -102,6 +110,7 @@ rv32i_table = [
         ImmType.R,
         (ALUOp.OR, Op1Sel.RS1, Op2Sel.RS2, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -110,6 +119,7 @@ rv32i_table = [
         ImmType.R,
         (ALUOp.AND, Op1Sel.RS1, Op2Sel.RS2, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     # --- I-Type (ALU) ---
@@ -119,6 +129,7 @@ rv32i_table = [
         ImmType.I,
         (ALUOp.ADD, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -127,6 +138,7 @@ rv32i_table = [
         ImmType.I,
         (ALUOp.SLT, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -135,6 +147,7 @@ rv32i_table = [
         ImmType.I,
         (ALUOp.SLTU, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -143,6 +156,7 @@ rv32i_table = [
         ImmType.I,
         (ALUOp.XOR, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -151,6 +165,7 @@ rv32i_table = [
         ImmType.I,
         (ALUOp.OR, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -159,6 +174,7 @@ rv32i_table = [
         ImmType.I,
         (ALUOp.AND, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     # Shift Imm (Bit30 distinguishes Logic/Arith shift)
@@ -168,6 +184,7 @@ rv32i_table = [
         ImmType.I,
         (ALUOp.SLL, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -176,6 +193,7 @@ rv32i_table = [
         ImmType.I,
         (ALUOp.SRL, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -184,6 +202,7 @@ rv32i_table = [
         ImmType.I,
         (ALUOp.SRA, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     # --- I-type (Load) ---
@@ -194,6 +213,7 @@ rv32i_table = [
         ImmType.I,
         (ALUOp.ADD, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.LOAD, MemWidth.BYTE, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -202,6 +222,7 @@ rv32i_table = [
         ImmType.I,
         (ALUOp.ADD, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.LOAD, MemWidth.HALF, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -210,6 +231,7 @@ rv32i_table = [
         ImmType.I,
         (ALUOp.ADD, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.LOAD, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -218,6 +240,7 @@ rv32i_table = [
         ImmType.I,
         (ALUOp.ADD, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.LOAD, MemWidth.BYTE, MemSign.UNSIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -226,6 +249,7 @@ rv32i_table = [
         ImmType.I,
         (ALUOp.ADD, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.LOAD, MemWidth.HALF, MemSign.UNSIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     # --- S-type (Store) ---
@@ -236,6 +260,7 @@ rv32i_table = [
         ImmType.S,
         (ALUOp.ADD, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.STORE, MemWidth.BYTE, MemSign.SIGNED),
+        WB.DISABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -244,6 +269,7 @@ rv32i_table = [
         ImmType.S,
         (ALUOp.ADD, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.STORE, MemWidth.HALF, MemSign.SIGNED),
+        WB.DISABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -252,6 +278,7 @@ rv32i_table = [
         ImmType.S,
         (ALUOp.ADD, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.STORE, MemWidth.WORD, MemSign.SIGNED),
+        WB.DISABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     # --- Branch ---
@@ -262,6 +289,7 @@ rv32i_table = [
         ImmType.B,
         (ALUOp.SUB, Op1Sel.RS1, Op2Sel.RS2, BranchType.BEQ),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.DISABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -270,6 +298,7 @@ rv32i_table = [
         ImmType.B,
         (ALUOp.SUB, Op1Sel.RS1, Op2Sel.RS2, BranchType.BNE),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.DISABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -278,6 +307,7 @@ rv32i_table = [
         ImmType.B,
         (ALUOp.SLT, Op1Sel.RS1, Op2Sel.RS2, BranchType.BLT),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.DISABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -286,6 +316,7 @@ rv32i_table = [
         ImmType.B,
         (ALUOp.SLT, Op1Sel.RS1, Op2Sel.RS2, BranchType.BGE),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.DISABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -294,6 +325,7 @@ rv32i_table = [
         ImmType.B,
         (ALUOp.SLTU, Op1Sel.RS1, Op2Sel.RS2, BranchType.BLTU),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.DISABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -302,6 +334,7 @@ rv32i_table = [
         ImmType.B,
         (ALUOp.SLTU, Op1Sel.RS1, Op2Sel.RS2, BranchType.BGEU),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.DISABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     # --- JAL ---
@@ -313,6 +346,7 @@ rv32i_table = [
         ImmType.J,
         (ALUOp.ADD, Op1Sel.PC, Op2Sel.CONST_4, BranchType.JAL),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     # --- JALR ---
@@ -324,6 +358,7 @@ rv32i_table = [
         ImmType.I,
         (ALUOp.ADD, Op1Sel.PC, Op2Sel.CONST_4, BranchType.JALR),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     # --- U-Type ---
@@ -334,6 +369,7 @@ rv32i_table = [
         ImmType.U,
         (ALUOp.ADD, Op1Sel.ZERO, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     # AUIPC: ALU 算 PC + Imm
@@ -343,6 +379,7 @@ rv32i_table = [
         ImmType.U,
         (ALUOp.ADD, Op1Sel.PC, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     # --- Environment (ECALL/EBREAK) ---
@@ -352,6 +389,7 @@ rv32i_table = [
         ImmType.I,
         (ALUOp.SYS, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.DISABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     (
@@ -360,6 +398,7 @@ rv32i_table = [
         ImmType.I,
         (ALUOp.SYS, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.DISABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
     # --- Zicsr 扩展指令 (CSR 指令) ---
@@ -371,6 +410,7 @@ rv32i_table = [
         ImmType.Z,
         (ALUOp.SYS, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.ENABLE, CSRWe.ENABLE),
     ),
     # csrrs: CSR_RS 操作，使用 rs1 作为操作数
@@ -380,6 +420,7 @@ rv32i_table = [
         ImmType.Z,
         (ALUOp.SYS, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RS, CSRRe.ENABLE, CSRWe.ENABLE),
     ),
     # csrrc: CSR_RC 操作，使用 rs1 作为操作数
@@ -389,6 +430,7 @@ rv32i_table = [
         ImmType.Z,
         (ALUOp.SYS, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RC, CSRRe.ENABLE, CSRWe.ENABLE),
     ),
     # 立即数操作指令 (Immediate-Register Operations)
@@ -399,6 +441,7 @@ rv32i_table = [
         ImmType.Z,
         (ALUOp.SYS, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.IMM, CSRALUOp.CSR_RW, CSRRe.ENABLE, CSRWe.ENABLE),
     ),
     # csrrsi: CSR_RS 操作，使用立即数 (zimm) 作为操作数
@@ -408,6 +451,7 @@ rv32i_table = [
         ImmType.Z,
         (ALUOp.SYS, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.IMM, CSRALUOp.CSR_RS, CSRRe.ENABLE, CSRWe.ENABLE),
     ),
     # csrrci: CSR_RC 操作，使用立即数 (zimm) 作为操作数
@@ -417,6 +461,7 @@ rv32i_table = [
         ImmType.Z,
         (ALUOp.SYS, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.ENABLE,
         (CSROpSel.IMM, CSRALUOp.CSR_RC, CSRRe.ENABLE, CSRWe.ENABLE),
     ),
     # --- MRET 指令 ---
@@ -427,6 +472,7 @@ rv32i_table = [
         ImmType.Z,
         (ALUOp.SYS, Op1Sel.RS1, Op2Sel.IMM, BranchType.NO_BRANCH),
         (MemOp.NONE, MemWidth.WORD, MemSign.SIGNED),
+        WB.DISABLE,
         (CSROpSel.RS1, CSRALUOp.CSR_RW, CSRRe.DISABLE, CSRWe.DISABLE),
     ),
 ]

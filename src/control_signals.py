@@ -106,6 +106,10 @@ class MemSign:
     SIGNED = Bits(1)(0b0)
     UNSIGNED = Bits(1)(0b1)
 
+# 4. 写回阶段控制信号(WB Control)
+class WB:
+    ENABLE = Bits(1)(0b1)
+    DISABLE = Bits(1)(0b0)
 
 # Privileged 指令相关控制信号
 # Exception_Code 常量(Bits(32))

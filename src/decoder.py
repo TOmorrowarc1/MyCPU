@@ -77,7 +77,7 @@ class Decoder(Module):
             pad_11, inst[31:31], inst[12:19], inst[20:20], inst[21:30], Bits(1)(0)
         )
         # Z-Type: CSR 指令立即数 (零扩展)
-        imm_z = concat(Bits(27)(0), inst[15:20])
+        imm_z = concat(Bits(27)(0), inst[15:19])
 
         # 3.2 查表译码 (Signal Accumulation Loop)
         # 初始化累加器
@@ -104,6 +104,7 @@ class Decoder(Module):
                 t_imm_type,
                 (t_alu_func, t_op1_sel, t_op2_sel, t_branch_type),
                 (t_mem_op, t_mem_width, t_mem_sign),
+                t_we,
                 (t_csr_op_sel, t_csr_alu_op, t_csr_re, t_csr_we),
             ) = entry
 
@@ -121,6 +122,7 @@ class Decoder(Module):
             acc_mem_op |= match_if.select(t_mem_op, Bits(3)(0))
             acc_mem_wid |= match_if.select(t_mem_width, Bits(3)(0))
             acc_mem_uns |= match_if.select(t_mem_sign, Bits(1)(0))
+            acc_we |= match_if.select(t_we, Bits(1)(0))
             # CSR 相关信号累加
             acc_csr_op_sel |= match_if.select(t_csr_op_sel, Bits(1)(0))
             acc_csr_alu_op |= match_if.select(t_csr_alu_op, Bits(3)(0))
@@ -137,6 +139,13 @@ class Decoder(Module):
             imm_z,
         )
 
+        id_rd = acc_we.select(rd, Bits(5)(0))
+        # CSR 指令 rd = x0 时不读 CSR, rs1/zimm = 0 时不写 CSR
+        id_csr_re = (rd != Bits(5)(0)) & (acc_csr_re == CSRRe.ENABLE)
+        id_csr_we = (rs1 != Bits(5)(0)) & (acc_csr_we == CSRWe.ENABLE)
+        csr_raddr = id_csr_re.select(csr_addr, Bits(12)(0))
+        csr_waddr = id_csr_we.select(csr_addr, Bits(12)(0))
+
         # 4. 异常处理逻辑
         # 当前权限
         curr_mode = current_mode[0]
@@ -144,11 +153,11 @@ class Decoder(Module):
         csr_addr_high2 = csr_addr[10:12]
         csr_priv_level = csr_addr_high2
         csr_access_illegal = Bits(1)(0)
-        with Condition(acc_csr_re == Bits(1)(1) | acc_csr_we == Bits(1)(1)): 
+        with Condition(acc_csr_re == Bits(1)(1) | acc_csr_we == Bits(1)(1)):
             csr_access_illegal = (csr_priv_level > curr_mode).select(
                 Bits(1)(1), Bits(1)(0)
             )
-        # CSR 指令 rd 与 rs 处理（TODO）
+
         # 检测非法指令
         is_illegal_inst = has_match == Bits(1)(0)
         # 检测 ECALL 指令 (inst == 0x00000073)
@@ -176,7 +185,7 @@ class Decoder(Module):
 
         # 构造预解码包
         wb_ctrl_t = wb_ctrl_signals.bundle(
-            rd_addr=final_rd,
+            rd_addr=id_rd,
             halt_if=halt_if,
             is_MRET=is_mret,
             Exception_Valid=exception_valid,
@@ -218,7 +227,7 @@ class Decoder(Module):
             acc_mem_op,
             acc_mem_wid,
             acc_mem_uns,
-            final_rd,
+            rd,
             acc_csr_op_sel,
             acc_csr_alu_op,
             acc_csr_re,
