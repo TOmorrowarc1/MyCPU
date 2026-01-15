@@ -16,12 +16,13 @@ OP_SYSTEM = Bits(7)(0b1110011)  # ECALL, EBREAK, Ziscr
 
 # 立即数类型 (用于生成器选择切片逻辑)
 class ImmType:
-    R = Bits(6)(0b000001)  # 无立即数
-    I = Bits(6)(0b000010)
-    S = Bits(6)(0b000100)
-    B = Bits(6)(0b001000)
-    U = Bits(6)(0b010000)
-    J = Bits(6)(0b100000)
+    R = Bits(7)(0b0000001)  # 无立即数
+    I = Bits(7)(0b0000010)
+    S = Bits(7)(0b0000100)
+    B = Bits(7)(0b0001000)
+    U = Bits(7)(0b0010000)
+    J = Bits(7)(0b0100000)
+    Z = Bits(7)(0b1000000)  # 用于 CSR 指令的 zimm
 
 
 # 2. 执行阶段控制信号 (EX Control)
@@ -139,15 +140,15 @@ class CSRReadSel:
     CSR_MEM_BYPASS = Bits(4)(0b0100) # 来自 MEM 阶段 CSR 结果旁路
     CSR_WB_BYPASS = Bits(4)(0b1000)  # 来自 WB 阶段 CSR 结果旁路
    
+# CSR 读使能 (Bits(1))
+class CSRRe:
+    ENABLE = Bits(1)(0b1)
+    DISABLE = Bits(1)(0b0)
+    
 # CSR 写使能 (Bits(1))
 class CSRWe:
     ENABLE = Bits(1)(0b1)
     DISABLE = Bits(1)(0b0)
-     
-# MRET 特别标识(Bits(1))
-class is_MRET:
-    YES = Bits(1)(0b1)
-    NO = Bits(1)(0b0)
     
     
 # 4. 控制信号结构定义
