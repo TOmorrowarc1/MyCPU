@@ -54,7 +54,7 @@ class Decoder(Module):
             log("ID: Halt Ins in ID with pc=0x{:x}", pc)
 
         # 3. 指令解析
-        # 3.1 字段切片
+        # 3.1 字段获取
         rd = inst[7:11]
         rs1 = inst[15:19]
         rs2 = inst[20:24]
@@ -96,7 +96,7 @@ class Decoder(Module):
         acc_csr_alu_op = Bits(3)(0)
         acc_csr_re = Bits(1)(0)
         acc_csr_we = Bits(1)(0)
-
+        # 并行匹配并累加信号
         match_if = Bits(1)(0)
         has_match = Bits(1)(0)
         for entry in rv32i_table:
@@ -140,9 +140,9 @@ class Decoder(Module):
             imm_j,
             imm_z,
         )
-
+        # 加工: rd & csr_addr 读写使能
         id_rd = acc_we.select(rd, Bits(5)(0))
-        # CSR 指令 rd = x0 时不读 CSR, rs1/zimm = 0 时不写 CSR
+        # Ziscr 指令 rd = x0 时不读 CSR, rs1/zimm = 0 时不写 CSR
         id_csr_re = (rd != Bits(5)(0)) & (acc_csr_re == CSRRe.ENABLE)
         id_csr_we = (rs1 != Bits(5)(0)) & (acc_csr_we == CSRWe.ENABLE)
         csr_raddr = id_csr_re.select(csr_addr, Bits(12)(0))
@@ -156,10 +156,11 @@ class Decoder(Module):
         # 规则1: 当前权限 < CSR 定义的最低权限 (Bits 9:8) -> 非法
         # 规则2: 尝试写入 (WE=1) 只读 CSR (Bits 11:10 == 11) -> 非法
         # 规则3: 尝试写入尚未定义的 CSR -> 非法
-        csr_priv_level = csr_addr[8:9]
+        csr_in_mmode = csr_addr[8:9] == Bits(2)(0b11)
         is_csr_ro = csr_addr[10:11] == Bits(2)(0b11)
+        csr_undefined = csr_addr >= Bits(12)(0x300)  # 假设只定义到 0x2FF
         csr_access_fault = (
-            (acc_csr_re | acc_csr_we) & (in_umode & csr_priv_level == Bits(2)(0b11))
+            (acc_csr_re | acc_csr_we) & ((in_umode & csr_in_mmode) | csr_undefined)
         ) | (acc_csr_we & is_csr_ro)
         # 4.1.2 MRET 权限检查: 只有 M-Mode (11) 可以执行 mret，否则报非法指令
         is_mret_inst = inst == Bits(32)(0x30200073)
@@ -169,7 +170,6 @@ class Decoder(Module):
         # 4.2 特殊指令检测
         is_ecall = inst == Bits(32)(0x00000073)
         is_ebreak = inst == Bits(32)(0x00100073)
-        is_mret = is_mret_inst & (~mret_priv_fault)
         # 4.3 异常信号生成
         exception_valid = fetch_exception_vaild | is_illegal_inst | is_ecall | is_ebreak
         # 级联选择 Exception_Code
@@ -194,7 +194,7 @@ class Decoder(Module):
         wb_ctrl_t = wb_ctrl_signals.bundle(
             rd_addr=id_rd,
             halt_if=halt_if,
-            is_MRET=is_mret,
+            is_MRET=is_mret_inst,
             Exception_Valid=exception_valid,
             Exception_Code=exception_code,
             Exception_Val=exception_val,
@@ -247,11 +247,11 @@ class Decoder(Module):
             csr_addr,
         )
         log(
-            "Exception: valid=0x{:x} code=0x{:x} val=0x{:x} is_mret=0x{:x}",
+            "Exception: valid=0x{:x} code=0x{:x} val=0x{:x} is_mret(No Exception Check)=0x{:x}",
             exception_valid,
             exception_code,
             exception_val,
-            is_mret,
+            is_mret_inst,
         )
 
         # 返回: 预解码包, 冒险检测需要的原始信号
@@ -273,20 +273,31 @@ class DecoderImpl(Downstream):
         # --- 3. DataHazardUnit 反馈信号 ---
         rs1_sel: Bits(4),
         rs2_sel: Bits(4),
+        csr_sel: Bits(4),
         stall_if: Bits(1),
-        branch_target_reg: Array,
+        # --- 4. Flush 信号 ---
+        br_target_pc: Array,
+        flush_all_pc: Array,
+        # --- 5. CSR 读数据 (来自 CSR File) ---
+        csr_data: Bits(32),
     ):
+        # 1. 获取输入信号
         mem_ctrl = mem_ctrl_signals.view(pre.mem_ctrl)
         wb_ctrl = wb_ctrl_signals.view(mem_ctrl.wb_ctrl)
-
-        flush_if = branch_target_reg[0] != Bits(32)(0)
+        # 计算 NOP 信号
+        flush_if = (br_target_pc[0] != Bits(32)(0)) | (flush_all_pc[0] != Bits(32)(0))
         nop_if = flush_if | stall_if
 
-        final_rd = nop_if.select(Bits(5)(0), wb_ctrl.rd_addr)
-        final_halt_if = nop_if.select(Bits(1)(0), wb_ctrl.halt_if)
-        final_mem_opcode = nop_if.select(MemOp.NONE, mem_ctrl.mem_opcode)
-        final_alu_func = nop_if.select(ALUOp.NOP, pre.alu_func)
-        final_branch_type = nop_if.select(BranchType.NO_BRANCH, pre.branch_type)
+        # 2. 计算控制信号
+        exception_vaild = nop_if.select(Bits(1)(0), wb_ctrl.Exception_Valid)
+        clear_if = exception_vaild | nop_if
+        id_result_rd = clear_if.select(Bits(5)(0), wb_ctrl.rd_addr)
+        id_result_halt_if = clear_if.select(Bits(1)(0), wb_ctrl.halt_if)
+        id_result_is_mret = clear_if.select(Bits(1)(0), wb_ctrl.is_MRET)
+        id_result_csr_waddr = clear_if.select(Bits(12)(0), wb_ctrl.csr_waddr)
+        id_result_mem_opcode = nop_if.select(MemOp.NONE, mem_ctrl.mem_opcode)
+        id_result_alu_func = nop_if.select(ALUOp.NOP, pre.alu_func)
+        id_result_branch_type = nop_if.select(BranchType.NO_BRANCH, pre.branch_type)
 
         with Condition(nop_if == Bits(1)(1)):
             log(
@@ -295,46 +306,63 @@ class DecoderImpl(Downstream):
                 flush_if == Bits(1)(1),
             )
 
-        final_wb_ctrl = wb_ctrl_signals.bundle(
-            rd_addr=final_rd,
-            halt_if=final_halt_if,
+        id_result_wb_ctrl = wb_ctrl_signals.bundle(
+            rd_addr=id_result_rd,
+            halt_if=id_result_halt_if,
+            is_MRET=id_result_is_mret,
+            Exception_Valid=exception_vaild,
+            Exception_Code=wb_ctrl.Exception_Code,
+            Exception_Val=wb_ctrl.Exception_Val,
+            PC=wb_ctrl.PC,
+            csr_waddr=id_result_csr_waddr,
         )
 
-        final_mem_ctrl = mem_ctrl_signals.bundle(
-            mem_opcode=final_mem_opcode,
+        id_result_mem_ctrl = mem_ctrl_signals.bundle(
+            mem_opcode=id_result_mem_opcode,
             mem_width=mem_ctrl.mem_width,
             mem_unsigned=mem_ctrl.mem_unsigned,
-            wb_ctrl=final_wb_ctrl,
+            wb_ctrl=id_result_wb_ctrl,
         )
 
-        final_ex_ctrl = ex_ctrl_signals.bundle(
-            alu_func=final_alu_func,
+        id_result_ex_ctrl = ex_ctrl_signals.bundle(
+            alu_func=id_result_alu_func,
             op1_sel=pre.op1_sel,
             op2_sel=pre.op2_sel,
             rs1_sel=rs1_sel,
             rs2_sel=rs2_sel,
-            branch_type=final_branch_type,
+            csr_sel=csr_sel,
+            csr_op_sel=pre.csr_alu_op,
+            csr_alu_func=pre.csr_alu_op,
+            branch_type=id_result_branch_type,
             next_pc_addr=pre.next_pc_addr,
-            mem_ctrl=final_mem_ctrl,
+            mem_ctrl=id_result_mem_ctrl,
         )
 
         log(
             "Output: alu_func=0x{:x} rs1_sel=0x{:x} rs2_sel=0x{:x} branch_type=0x{:x} mem_op=0x{:x} rd=0x{:x}",
-            final_alu_func,
+            id_result_alu_func,
             rs1_sel,
             rs2_sel,
-            final_branch_type,
-            final_mem_opcode,
-            final_rd,
+            id_result_branch_type,
+            id_result_mem_opcode,
+            id_result_rd,
         )
 
         # 无论是否 Stall，都向 EX 发送数据 (刚性流水线)
         # 如果是 NOP，数据线上的值(pc, imm等)是无意义的，EX 不会使用
         call = executor.async_called(
-            ctrl=final_ex_ctrl,
+            ctrl=id_result_ex_ctrl,
             pc=pre.pc,
             rs1_data=pre.rs1_data,
             rs2_data=pre.rs2_data,
+            csr_data=csr_data,
             imm=pre.imm,
         )
-        call.bind.set_fifo_depth(ctrl=1, pc=1, rs1_data=1, rs2_data=1, imm=1)
+        call.bind.set_fifo_depth(
+            ctrl=1,
+            pc=1,
+            rs1_data=1,
+            rs2_data=1,
+            csr_data=1,
+            imm=1,
+        )

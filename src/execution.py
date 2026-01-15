@@ -355,4 +355,12 @@ class Execution(Module):
             log("EX: Load Address: 0x{:x}", alu_result)
 
         # 返回引脚 (供 HazardUnit 与 SingleMemory 使用)
-        return ex_result_rd, alu_result, is_load, is_store, mem_width, ex_rs2_data
+        return (
+            ex_result_rd,
+            ex_result_csr_waddr,
+            alu_result,
+            is_load,
+            is_store,
+            mem_width,
+            ex_rs2_data,
+        )
