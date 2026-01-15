@@ -212,3 +212,12 @@ pre_decode_t = Record(
     csr_data=Bits(32),
     imm=Bits(32),
 )
+
+id_ctrl_signals = Record(
+    # 预解码信号
+    PC=Bits(32),  # 当前指令的 PC
+    Exception_Valid=Bits(1),  # 异常代码有效标志
+    Exception_Code=Bits(32),  # 异常代码 (值见上方定义)
+    Exception_Val=Bits(32),  # 异常相关值 (如：faulting address)
+    stall_if = Bits(1), # 是否暂停取指
+)

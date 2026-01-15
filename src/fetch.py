@@ -39,64 +39,69 @@ class FetcherImpl(Downstream):
         decoder: Module,  # 下一级模块 (用于发送指令)
         # --- 反馈控制信号 (来自 DataHazardUnit/ControlHazardReg) ---
         stall_if: Value,  # 暂停取指 (保持当前 PC)
-        branch_target: Array,  # 不为0时，根据目标地址冲刷流水线
+        branch_target: Array,  # 不为0时，根据目标地址冲刷流水线。
+        flush_all_pc: Array,  # 不为0时，跳转到该地址，且优先级高于前者。
         # --- BTB 分支预测 ---
         btb_impl: "BTBImpl",  # BTB 实现逻辑
         btb_valid: Array,  # BTB 有效位数组
         btb_tags: Array,  # BTB 标签数组
         btb_targets: Array,  # BTB 目标地址数组
     ):
+        # 1. 判断 Flush 与 Stall 与否
+        trap_flush_if = flush_all_pc[0] != Bits(32)(0)
+        br_flush_if = branch_target[0] != Bits(32)(0)
+        flush_if = trap_flush_if | br_flush_if
         current_stall_if = stall_if.optional(Bits(1)(0))
-
         with Condition(current_stall_if == Bits(1)(1)):
             log("IF: Stall")
-
-        # 读取当前 PC
-        current_pc = current_stall_if.select(last_pc_reg[0], pc_addr)
-
-        flush_if = branch_target[0] != Bits(32)(0)
-        target_pc = branch_target[0]
-
         with Condition(flush_if == Bits(1)(1)):
-            log("IF: Flush to 0x{:x}", target_pc)
+            log("IF: Flush")
 
-        final_current_pc = flush_if.select(target_pc, current_pc)
-        log("IF: Final Current PC=0x{:x}", final_current_pc)
+        # 2. 计算当前 PC
+        # Trap Flush > Branch Flush > Stall > 正常取指
+        stall_pc = current_stall_if.select(last_pc_reg[0], pc_addr)
+        flush_pc = trap_flush_if.select(flush_all_pc[0], branch_target[0])
+        target_pc = flush_if.select(flush_pc, stall_pc)
+        log("IF: Current PC=0x{:x}", target_pc)
 
-        # --- 1. 计算 Next PC (时序逻辑输入) ---
+        # 3. 异常检测: Ins addr misaligned
+        exception_vaild = target_pc[0:1] != Bits(2)(0)
+        exception_code = exception_vaild.select(EXC_INST_ADDR_MISALIGNED, Bits(32)(0))
+        exception_val = exception_vaild.select(target_pc, Bits(32)(0))
+
+        # 4. 计算 Next PC
         # 使用 BTB 进行分支预测
         btb_hit, btb_predicted_target = btb_impl.predict(
-            pc=final_current_pc,
+            pc=target_pc,
             btb_valid=btb_valid,
             btb_tags=btb_tags,
             btb_targets=btb_targets,
         )
-
         # 如果 BTB 命中，使用预测目标；否则默认 PC + 4
-        btb_miss_target = (final_current_pc.bitcast(UInt(32)) + UInt(32)(4)).bitcast(
-            Bits(32)
-        )
+        btb_miss_target = (target_pc.bitcast(UInt(32)) + UInt(32)(4)).bitcast(Bits(32))
         predicted_next_pc = btb_hit.select(btb_predicted_target, btb_miss_target)
-    
         # 最终的 Next PC
-        final_next_pc = predicted_next_pc
+        next_pc = predicted_next_pc
 
-        # 更新 PC 寄存器
-        pc_reg[0] <= final_next_pc
-        last_pc_reg[0] <= final_current_pc
-        log(
-            "IF: Next PC=0x{:x}  Next Last PC={:x}",
-            final_next_pc,
-            final_current_pc,
+        # 5. 更新 PC 寄存器
+        last_pc_reg[0] <= target_pc
+        pc_reg[0] <= next_pc
+        log("IF: Next PC=0x{:x}  Next Last PC={:x}", next_pc, target_pc)
+
+        # 6. 驱动下游 Decoder
+        # 打包控制信号
+        id_ctrl = id_ctrl_signals.bundle(
+            PC=target_pc,
+            Exception_Valid=exception_vaild,
+            Exception_Code=exception_code,
+            Exception_Val=exception_val,
+            stall_if=current_stall_if,
         )
-
-        # --- 2. 驱动下游 Decoder (流控) ---
         # 发送到下一级，传递 PC 值与 Stall 信号（使用上一周期指令信号）
         call = decoder.async_called(
-            pc=final_current_pc,
-            next_pc=final_next_pc,
-            stall=current_stall_if,
+            ctrl=id_ctrl,
+            next_pc=next_pc,
         )
-        call.bind.set_fifo_depth(pc=1)
+        call.bind.set_fifo_depth(ctrl=1,next_pc=1)
 
-        return final_current_pc
+        return target_pc

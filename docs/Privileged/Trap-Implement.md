@@ -151,7 +151,6 @@ CPU 仅在 **WB 阶段开始**时观察全局使能信号与 MIP 高位信号，
 | `csr_raddr`         | Bits(12) 来自 ID 阶段的读地址             |
 | `csr_waddr`         | Bits(12) 来自 WB 阶段的写地址             |
 | `csr_wdata`         | Bits(32) 来自 WB 阶段的写数据             |
-| `csr_we`            | Bits(1)  来自 WB 阶段的写使能             |
 | `Exception_Vaild`   | Bits(1)  来自 WB 阶段，指令携带的控制信号  |
 | `Exception_Code`    | Bits(32) 来自 WB 阶段，异常代码           |
 | `Exception_Val`     | Bits(32) 来自 WB 阶段，异常附加信息       |
