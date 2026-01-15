@@ -203,7 +203,6 @@ ex_ctrl_signals = Record(
 pre_decode_t = Record(
     # 原始控制信号
     alu_func=Bits(16),
-    alu_result_sel=Bits(1),
     csr_alu_op=Bits(3),
     op1_sel=Bits(3),
     op2_sel=Bits(3),
@@ -214,7 +213,6 @@ pre_decode_t = Record(
     # 原始数据需求
     rs1_data=Bits(32),
     rs2_data=Bits(32),
-    csr_data=Bits(32),
     imm=Bits(32),
 )
 

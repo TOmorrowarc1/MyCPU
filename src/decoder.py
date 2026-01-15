@@ -32,6 +32,8 @@ class Decoder(Module):
         # 1. 获取输入信号
         id_ctrl, next_pc_val = self.pop_all_ports(False)
         fetch_exception_vaild = id_ctrl.Exception_Valid
+        fetch_exception_code = id_ctrl.Exception_Code
+        fetch_exception_val = id_ctrl.Exception_Val
         stall_if = id_ctrl.Stall_IF
         pc = id_ctrl.PC
         # 从 SRAM 输出获取指令
@@ -146,40 +148,45 @@ class Decoder(Module):
         csr_raddr = id_csr_re.select(csr_addr, Bits(12)(0))
         csr_waddr = id_csr_we.select(csr_addr, Bits(12)(0))
 
-        # 4. 异常处理逻辑
-        # 当前权限
-        curr_mode = current_mode[0]
-        # CSR 访问权限检查
-        csr_addr_high2 = csr_addr[10:12]
-        csr_priv_level = csr_addr_high2
-        csr_access_illegal = Bits(1)(0)
-        with Condition(acc_csr_re == Bits(1)(1) | acc_csr_we == Bits(1)(1)):
-            csr_access_illegal = (csr_priv_level > curr_mode).select(
-                Bits(1)(1), Bits(1)(0)
-            )
-
-        # 检测非法指令
-        is_illegal_inst = has_match == Bits(1)(0)
-        # 检测 ECALL 指令 (inst == 0x00000073)
+        # 4. 异常处理
+        # 4.1 权限与合法性检查
+        in_mmode = current_mode[0] == Bits(2)(0b11)
+        in_umode = current_mode[0] == Bits(2)(0b00)
+        # 4.1.1 CSR 访问权限检查
+        # 规则1: 当前权限 < CSR 定义的最低权限 (Bits 9:8) -> 非法
+        # 规则2: 尝试写入 (WE=1) 只读 CSR (Bits 11:10 == 11) -> 非法
+        # 规则3: 尝试写入尚未定义的 CSR -> 非法
+        csr_priv_level = csr_addr[8:9]
+        is_csr_ro = csr_addr[10:11] == Bits(2)(0b11)
+        csr_access_fault = (
+            (acc_csr_re | acc_csr_we) & (in_umode & csr_priv_level == Bits(2)(0b11))
+        ) | (acc_csr_we & is_csr_ro)
+        # 4.1.2 MRET 权限检查: 只有 M-Mode (11) 可以执行 mret，否则报非法指令
+        is_mret_inst = inst == Bits(32)(0x30200073)
+        mret_priv_fault = is_mret_inst & (~in_mmode)
+        # 4.1.3 汇总非法指令条件
+        is_illegal_inst = (has_match == Bits(1)(0)) | csr_access_fault | mret_priv_fault
+        # 4.2 特殊指令检测
         is_ecall = inst == Bits(32)(0x00000073)
-        # 检测 EBREAK 指令 (inst == 0x00100073)
         is_ebreak = inst == Bits(32)(0x00100073)
-        # 检测 MRET 指令 (inst == 0x30200073)
-        is_mret = inst == Bits(32)(0x30200073)
-        # 设置异常代码
+        is_mret = is_mret_inst & (~mret_priv_fault)
+        # 4.3 异常信号生成
         exception_valid = fetch_exception_vaild | is_illegal_inst | is_ecall | is_ebreak
-        exception_code = is_ecall.select(EXC_ECALL_MMODE)
-        exception_val = Bits(32)(0)
+        # 级联选择 Exception_Code
+        ecall_code_target = in_mmode.select(EXC_ECALL_MMODE, EXC_ECALL_UMODE)
+        code_sel_ecall = is_ecall.select(ecall_code_target, Bits(32)(0))
+        code_sel_ebreak = is_ebreak.select(EXC_EBREAK, code_sel_ecall)
+        code_sel_illegal = is_illegal_inst.select(EXC_ILLEGAL_INST, code_sel_ebreak)
+        exception_code = fetch_exception_vaild.select(
+            fetch_exception_code, code_sel_illegal
+        )
+        # 级联选择 Exception_Val (mtval)
+        val_sel_illegal = is_illegal_inst.select(inst, Bits(32)(0))
+        exception_val = fetch_exception_vaild.select(
+            fetch_exception_val, val_sel_illegal
+        )
 
-        with Condition(is_ecall == Bits(1)(1)):
-            exception_valid = Bits(1)(1)
-            exception_code = EXC_ECALL_MMODE
-
-        with Condition(is_ebreak == Bits(1)(1)):
-            exception_valid = Bits(1)(1)
-            exception_code = EXC_EBREAK
-
-        # 6. 读取寄存器堆 & 打包
+        # 5. 读取寄存器堆 & 打包
         raw_rs1_data = reg_file[rs1]
         raw_rs2_data = reg_file[rs2]
 
@@ -192,7 +199,7 @@ class Decoder(Module):
             Exception_Code=exception_code,
             Exception_Val=exception_val,
             PC=pc,
-            csr_waddr=csr_addr,
+            csr_waddr=csr_waddr,
         )
 
         mem_ctrl_t = mem_ctrl_signals.bundle(
@@ -204,7 +211,6 @@ class Decoder(Module):
 
         pre = pre_decode_t.bundle(
             alu_func=acc_alu_func,
-            alu_result_sel=Bits(1)(0),
             csr_alu_op=acc_csr_alu_op,
             op1_sel=acc_op1_sel,
             op2_sel=acc_op2_sel,
@@ -213,7 +219,6 @@ class Decoder(Module):
             mem_ctrl=mem_ctrl_t,
             rs1_data=raw_rs1_data,
             rs2_data=raw_rs2_data,
-            csr_data=Bits(32)(0),
             imm=acc_imm,
         )
 
@@ -250,7 +255,7 @@ class Decoder(Module):
         )
 
         # 返回: 预解码包, 冒险检测需要的原始信号
-        return pre, rs1, rs2
+        return pre, rs1, rs2, csr_raddr
 
 
 class DecoderImpl(Downstream):
