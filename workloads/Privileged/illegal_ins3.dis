@@ -1,7 +1,7 @@
 
 output.elf:     file format elf32-littleriscv
 
-# illegal instruction 1: 无法与任何指令BP匹配
+# illegal instruction 3: 尝试写入只读的寄存器
 Disassembly of section .text:
 
 00000000 <_start>:
@@ -51,8 +51,7 @@ Disassembly of section .text:
 
 0000008c <main_test>:
   8c:	00a00093          	li	ra,10
-  90:	ffff                	0xffff
-  92:	ffff                	0xffff
+  90:	f1129073          	csrw	mvendorid,t0
   94:	fe000fa3          	sb	zero,-1(zero)
   98:	00000013          	nop
   9c:	00000013          	nop

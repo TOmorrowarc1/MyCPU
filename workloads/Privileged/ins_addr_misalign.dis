@@ -1,7 +1,7 @@
 
 output.elf:     file format elf32-littleriscv
 
-# illegal instruction 1: 无法与任何指令BP匹配
+# instruction address misalignment
 Disassembly of section .text:
 
 00000000 <_start>:
@@ -14,14 +14,14 @@ Disassembly of section .text:
   18:	34129073          	csrw	mepc,t0
   1c:	300022f3          	csrr	t0,mstatus
   20:	ffffe337          	lui	t1,0xffffe
-  24:	7ff30313          	addi	t1,t1,2047 # ffffe7ff <_bss_end+0xffffe75f>
+  24:	7ff30313          	addi	t1,t1,2047 # ffffe7ff <_bss_end+0xffffe753>
   28:	0062f2b3          	and	t0,t0,t1
   2c:	0802e293          	ori	t0,t0,128
   30:	30029073          	csrw	mstatus,t0
   34:	30200073          	mret
 
 00000038 <trap_vector>:
-  38:	fc010113          	addi	sp,sp,-64 # 80000fc0 <_bss_end+0x80000f20>
+  38:	fc010113          	addi	sp,sp,-64 # 80000fc0 <_bss_end+0x80000f14>
   3c:	00512023          	sw	t0,0(sp)
   40:	00612223          	sw	t1,4(sp)
   44:	00712423          	sw	t2,8(sp)
@@ -51,8 +51,12 @@ Disassembly of section .text:
 
 0000008c <main_test>:
   8c:	00a00093          	li	ra,10
-  90:	ffff                	0xffff
-  92:	ffff                	0xffff
-  94:	fe000fa3          	sb	zero,-1(zero)
-  98:	00000013          	nop
-  9c:	00000013          	nop
+  90:	00000297          	auipc	t0,0x0
+  94:	01028293          	addi	t0,t0,16 # a0 <aligned_label>
+  98:	00128293          	addi	t0,t0,1
+  9c:	00028067          	jr	t0
+
+000000a0 <aligned_label>:
+  a0:	fe000fa3          	sb	zero,-1(zero)
+  a4:	00000013          	nop
+  a8:	00000013          	nop
