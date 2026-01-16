@@ -1,49 +1,58 @@
 
 output.elf:     file format elf32-littleriscv
 
-# 用于检测 ID 阶段因无法解析的指令引发 illegal Ins 错误的情况
+
 Disassembly of section .text:
 
 00000000 <_start>:
    0:	00000297          	auipc	t0,0x0
-   4:	01428293          	addi	t0,t0,20 # 14 <trap_vector>
+   4:	03828293          	addi	t0,t0,56 # 38 <trap_vector>
    8:	30529073          	csrw	mtvec,t0
    c:	80001137          	lui	sp,0x80001
-  10:	0580006f          	j	68 <main_test>
+  10:	00000297          	auipc	t0,0x0
+  14:	07c28293          	addi	t0,t0,124 # 8c <main_test>
+  18:	34129073          	csrw	mepc,t0
+  1c:	300022f3          	csrr	t0,mstatus
+  20:	ffffe337          	lui	t1,0xffffe
+  24:	7ff30313          	addi	t1,t1,2047 # ffffe7ff <_bss_end+0xffffe75f>
+  28:	0062f2b3          	and	t0,t0,t1
+  2c:	0802e293          	ori	t0,t0,128
+  30:	30029073          	csrw	mstatus,t0
+  34:	30200073          	mret
 
-00000014 <trap_vector>:
-  14:	fc010113          	addi	sp,sp,-64 # 80000fc0 <_bss_end+0x80000f44>
-  18:	00512023          	sw	t0,0(sp)
-  1c:	00612223          	sw	t1,4(sp)
-  20:	00712423          	sw	t2,8(sp)
-  24:	00a12623          	sw	a0,12(sp)
-  28:	342022f3          	csrr	t0,mcause
-  2c:	34102373          	csrr	t1,mepc
-  30:	343023f3          	csrr	t2,mtval
-  34:	0002c863          	bltz	t0,44 <handle_interrupt>
+00000038 <trap_vector>:
+  38:	fc010113          	addi	sp,sp,-64 # 80000fc0 <_bss_end+0x80000f20>
+  3c:	00512023          	sw	t0,0(sp)
+  40:	00612223          	sw	t1,4(sp)
+  44:	00712423          	sw	t2,8(sp)
+  48:	00a12623          	sw	a0,12(sp)
+  4c:	342022f3          	csrr	t0,mcause
+  50:	34102373          	csrr	t1,mepc
+  54:	343023f3          	csrr	t2,mtval
+  58:	0002c863          	bltz	t0,68 <handle_interrupt>
 
-00000038 <handle_exception>:
-  38:	00430313          	addi	t1,t1,4
-  3c:	34131073          	csrw	mepc,t1
-  40:	0100006f          	j	50 <exit_trap>
+0000005c <handle_exception>:
+  5c:	00430313          	addi	t1,t1,4
+  60:	34131073          	csrw	mepc,t1
+  64:	0100006f          	j	74 <exit_trap>
 
-00000044 <handle_interrupt>:
-  44:	00800e13          	li	t3,8
-  48:	344e3073          	csrc	mip,t3
-  4c:	0040006f          	j	50 <exit_trap>
+00000068 <handle_interrupt>:
+  68:	00800e13          	li	t3,8
+  6c:	344e3073          	csrc	mip,t3
+  70:	0040006f          	j	74 <exit_trap>
 
-00000050 <exit_trap>:
-  50:	00012283          	lw	t0,0(sp)
-  54:	00412303          	lw	t1,4(sp)
-  58:	00812383          	lw	t2,8(sp)
-  5c:	00c12503          	lw	a0,12(sp)
-  60:	04010113          	addi	sp,sp,64
-  64:	30200073          	mret
+00000074 <exit_trap>:
+  74:	00012283          	lw	t0,0(sp)
+  78:	00412303          	lw	t1,4(sp)
+  7c:	00812383          	lw	t2,8(sp)
+  80:	00c12503          	lw	a0,12(sp)
+  84:	04010113          	addi	sp,sp,64
+  88:	30200073          	mret
 
-00000068 <main_test>:
-  68:	00a00093          	li	ra,10
-  6c:	ffff                	0xffff
-  6e:	ffff                	0xffff
-  70:	fe000fa3          	sb	zero,-1(zero)
-  74:	00000013          	nop
-  78:	00000013          	nop
+0000008c <main_test>:
+  8c:	00a00093          	li	ra,10
+  90:	ffff                	0xffff
+  92:	ffff                	0xffff
+  94:	fe000fa3          	sb	zero,-1(zero)
+  98:	00000013          	nop
+  9c:	00000013          	nop
