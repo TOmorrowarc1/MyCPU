@@ -223,7 +223,7 @@ class CSRsUnit(Downstream):
         flush_all_pc[0] <= update_handling.select(update_pc, Bits(32)(0))
 
         log(
-            "Privileged ISA-CSR status: mstatus: {}, mie: {}, mip: {}, mtvec: {}, mepc: {}, mcause: {}, mtval: {}, current_mode: {}, flush_all_pc: {}",
+            "Privileged ISA-CSR status: mstatus: {:x}, mie: {:x}, mip: {:x}, mtvec: {:x}, mepc: {:x}, mcause: {:x}, mtval: {:x}, current_mode: {:x}, flush_all_pc: {:x}",
             mstatus[0],
             mie[0],
             mip[0],
@@ -235,7 +235,7 @@ class CSRsUnit(Downstream):
             flush_all_pc[0],
         )
         log(
-            "Privileged ISA-CSR Output: rdata: {}, update_handling:{}",
+            "Privileged ISA-CSR Output: rdata: {:x}, update_handling:{:x}",
             csr_rdata,
             update_handling,
         )
