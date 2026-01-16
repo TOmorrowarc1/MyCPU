@@ -131,7 +131,8 @@ class Decoder(Module):
             acc_csr_alu_func |= match_if.select(t_csr_alu_func, Bits(3)(0))
             acc_csr_re |= match_if.select(t_csr_re, Bits(1)(0))
             acc_csr_we |= match_if.select(t_csr_we, Bits(1)(0))
-
+        # 加工: 选择立即数。需要使用占位符处理非法指令 acc 全 0 情况。
+        acc_imm_type |= (has_match).select(Bits(7)(0), Bits(7)(0b0000001))
         acc_imm = acc_imm_type.select1hot(
             Bits(32)(0),
             imm_i,
@@ -162,14 +163,14 @@ class Decoder(Module):
         csr_in_mmode = csr_addr[8:9] == Bits(2)(0b11)
         is_csr_ro = csr_addr[10:11] == Bits(2)(0b11)
         # TODO: 完善 CSR 未定义列表
-        csr_access_fault = (
-            (acc_csr_re | acc_csr_we) & ((in_umode & csr_in_mmode))
-        ) | (acc_csr_we & is_csr_ro)
+        csr_access_fault = ((id_csr_re | id_csr_we) & ((in_umode & csr_in_mmode))) | (
+            id_csr_we & is_csr_ro
+        )
         # 4.1.2 MRET 权限检查: 只有 M-Mode (11) 可以执行 mret，否则报非法指令
         is_mret_inst = inst == Bits(32)(0x30200073)
         mret_priv_fault = is_mret_inst & (~in_mmode)
         # 4.1.3 汇总非法指令条件
-        is_illegal_inst = (has_match == Bits(1)(0)) | csr_access_fault | mret_priv_fault
+        is_illegal_inst = (~has_match) | csr_access_fault | mret_priv_fault
         # 4.2 特殊指令检测
         is_ecall = inst == Bits(32)(0x00000073)
         is_ebreak = inst == Bits(32)(0x00100073)
@@ -299,7 +300,12 @@ class DecoderImpl(Downstream):
         id_result_is_mret = clear_if.select(Bits(1)(0), wb_ctrl.is_MRET)
         id_result_csr_waddr = clear_if.select(Bits(12)(0), wb_ctrl.csr_waddr)
         id_result_mem_opcode = clear_if.select(MemOp.NONE, mem_ctrl.mem_opcode)
+        id_result_mem_width = clear_if.select(MemWidth.BYTE, mem_ctrl.mem_width)
         id_result_alu_func = clear_if.select(ALUOp.NOP, pre.alu_func)
+        id_result_op1_sel = clear_if.select(Op1Sel.RS1, pre.op1_sel)
+        id_result_op2_sel = clear_if.select(Op2Sel.RS2, pre.op2_sel)
+        id_result_csr_op_sel = clear_if.select(CSROpSel.RS1, pre.csr_op_sel)
+        id_result_csr_alu_func = clear_if.select(CSRALUOp.CSR_RW, pre.csr_alu_func)
         id_result_branch_type = clear_if.select(BranchType.NO_BRANCH, pre.branch_type)
 
         with Condition(nop_if == Bits(1)(1)):
@@ -322,20 +328,20 @@ class DecoderImpl(Downstream):
 
         id_result_mem_ctrl = mem_ctrl_signals.bundle(
             mem_opcode=id_result_mem_opcode,
-            mem_width=mem_ctrl.mem_width,
+            mem_width=id_result_mem_width,
             mem_unsigned=mem_ctrl.mem_unsigned,
             wb_ctrl=id_result_wb_ctrl,
         )
 
         id_result_ex_ctrl = ex_ctrl_signals.bundle(
             alu_func=id_result_alu_func,
-            op1_sel=pre.op1_sel,
-            op2_sel=pre.op2_sel,
+            op1_sel=id_result_op1_sel,
+            op2_sel=id_result_op2_sel,
             rs1_sel=rs1_sel,
             rs2_sel=rs2_sel,
             csr_sel=csr_sel,
-            csr_op_sel=pre.csr_op_sel,
-            csr_alu_func=pre.csr_alu_func,
+            csr_op_sel=id_result_csr_op_sel,
+            csr_alu_func=id_result_csr_alu_func,
             branch_type=id_result_branch_type,
             next_pc_addr=pre.next_pc_addr,
             mem_ctrl=id_result_mem_ctrl,
