@@ -93,7 +93,7 @@ class Decoder(Module):
         acc_mem_uns = Bits(1)(0)
         # CSR 相关控制信号累加器
         acc_csr_op_sel = Bits(1)(0)
-        acc_csr_alu_op = Bits(3)(0)
+        acc_csr_alu_func = Bits(3)(0)
         acc_csr_re = Bits(1)(0)
         acc_csr_we = Bits(1)(0)
         # 并行匹配并累加信号
@@ -107,7 +107,7 @@ class Decoder(Module):
                 (t_alu_func, t_op1_sel, t_op2_sel, t_branch_type),
                 (t_mem_op, t_mem_width, t_mem_sign),
                 t_we,
-                (t_csr_op_sel, t_csr_alu_op, t_csr_re, t_csr_we),
+                (t_csr_op_sel, t_csr_alu_func, t_csr_re, t_csr_we),
             ) = entry
 
             # --- A. 匹配逻辑 ---
@@ -127,7 +127,7 @@ class Decoder(Module):
             acc_we |= match_if.select(t_we, Bits(1)(0))
             # CSR 相关信号累加
             acc_csr_op_sel |= match_if.select(t_csr_op_sel, Bits(1)(0))
-            acc_csr_alu_op |= match_if.select(t_csr_alu_op, Bits(3)(0))
+            acc_csr_alu_func |= match_if.select(t_csr_alu_func, Bits(3)(0))
             acc_csr_re |= match_if.select(t_csr_re, Bits(1)(0))
             acc_csr_we |= match_if.select(t_csr_we, Bits(1)(0))
 
@@ -144,7 +144,9 @@ class Decoder(Module):
         id_rd = acc_we.select(rd, Bits(5)(0))
         # Ziscr 指令 rd = x0 时不读 CSR, rs1/zimm = 0 时不写 CSR
         id_csr_re = (rd != Bits(5)(0)) & (acc_csr_re == CSRRe.ENABLE)
-        id_csr_we = (rs1 != Bits(5)(0)) & (acc_csr_we == CSRWe.ENABLE)
+        id_csr_we = ((rs1 != Bits(5)(0)) | (acc_csr_alu_func == CSRALUOp.CSR_RW)) & (
+            acc_csr_we == CSRWe.ENABLE
+        )
         csr_raddr = id_csr_re.select(csr_addr, Bits(12)(0))
         csr_waddr = id_csr_we.select(csr_addr, Bits(12)(0))
 
@@ -158,7 +160,7 @@ class Decoder(Module):
         # 规则3: 尝试写入尚未定义的 CSR -> 非法
         csr_in_mmode = csr_addr[8:9] == Bits(2)(0b11)
         is_csr_ro = csr_addr[10:11] == Bits(2)(0b11)
-        csr_undefined = csr_addr >= Bits(12)(0x300)  # 假设只定义到 0x2FF
+        # TODO: 完善 CSR 未定义列表
         csr_access_fault = (
             (acc_csr_re | acc_csr_we) & ((in_umode & csr_in_mmode) | csr_undefined)
         ) | (acc_csr_we & is_csr_ro)
@@ -189,7 +191,6 @@ class Decoder(Module):
         # 5. 读取寄存器堆 & 打包
         raw_rs1_data = reg_file[rs1]
         raw_rs2_data = reg_file[rs2]
-
         # 构造预解码包
         wb_ctrl_t = wb_ctrl_signals.bundle(
             rd_addr=id_rd,
@@ -211,9 +212,10 @@ class Decoder(Module):
 
         pre = pre_decode_t.bundle(
             alu_func=acc_alu_func,
-            csr_alu_op=acc_csr_alu_op,
+            csr_alu_op=acc_csr_alu_func,
             op1_sel=acc_op1_sel,
             op2_sel=acc_op2_sel,
+            csr_op_sel=acc_csr_op_sel,
             branch_type=acc_br_type,
             next_pc_addr=next_pc_val,
             mem_ctrl=mem_ctrl_t,
@@ -234,7 +236,7 @@ class Decoder(Module):
             acc_mem_uns,
             rd,
             acc_csr_op_sel,
-            acc_csr_alu_op,
+            acc_csr_alu_func,
             acc_csr_re,
             acc_csr_we,
         )
@@ -289,15 +291,15 @@ class DecoderImpl(Downstream):
         nop_if = flush_if | stall_if
 
         # 2. 计算控制信号
-        exception_vaild = nop_if.select(Bits(1)(0), wb_ctrl.Exception_Valid)
-        clear_if = exception_vaild | nop_if
+        exception_valid = nop_if.select(Bits(1)(0), wb_ctrl.Exception_Valid)
+        clear_if = exception_valid | nop_if
         id_result_rd = clear_if.select(Bits(5)(0), wb_ctrl.rd_addr)
         id_result_halt_if = clear_if.select(Bits(1)(0), wb_ctrl.halt_if)
         id_result_is_mret = clear_if.select(Bits(1)(0), wb_ctrl.is_MRET)
         id_result_csr_waddr = clear_if.select(Bits(12)(0), wb_ctrl.csr_waddr)
-        id_result_mem_opcode = nop_if.select(MemOp.NONE, mem_ctrl.mem_opcode)
-        id_result_alu_func = nop_if.select(ALUOp.NOP, pre.alu_func)
-        id_result_branch_type = nop_if.select(BranchType.NO_BRANCH, pre.branch_type)
+        id_result_mem_opcode = clear_if.select(MemOp.NONE, mem_ctrl.mem_opcode)
+        id_result_alu_func = clear_if.select(ALUOp.NOP, pre.alu_func)
+        id_result_branch_type = clear_if.select(BranchType.NO_BRANCH, pre.branch_type)
 
         with Condition(nop_if == Bits(1)(1)):
             log(
@@ -310,7 +312,7 @@ class DecoderImpl(Downstream):
             rd_addr=id_result_rd,
             halt_if=id_result_halt_if,
             is_MRET=id_result_is_mret,
-            Exception_Valid=exception_vaild,
+            Exception_Valid=exception_valid,
             Exception_Code=wb_ctrl.Exception_Code,
             Exception_Val=wb_ctrl.Exception_Val,
             PC=wb_ctrl.PC,
@@ -331,8 +333,8 @@ class DecoderImpl(Downstream):
             rs1_sel=rs1_sel,
             rs2_sel=rs2_sel,
             csr_sel=csr_sel,
-            csr_op_sel=pre.csr_alu_op,
-            csr_alu_func=pre.csr_alu_op,
+            csr_op_sel=pre.csr_op_sel,
+            csr_alu_func=pre.csr_alu_func,
             branch_type=id_result_branch_type,
             next_pc_addr=pre.next_pc_addr,
             mem_ctrl=id_result_mem_ctrl,
@@ -352,7 +354,6 @@ class DecoderImpl(Downstream):
         # 如果是 NOP，数据线上的值(pc, imm等)是无意义的，EX 不会使用
         call = executor.async_called(
             ctrl=id_result_ex_ctrl,
-            pc=pre.pc,
             rs1_data=pre.rs1_data,
             rs2_data=pre.rs2_data,
             csr_data=csr_data,
@@ -360,7 +361,6 @@ class DecoderImpl(Downstream):
         )
         call.bind.set_fifo_depth(
             ctrl=1,
-            pc=1,
             rs1_data=1,
             rs2_data=1,
             csr_data=1,

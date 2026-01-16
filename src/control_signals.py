@@ -203,9 +203,10 @@ ex_ctrl_signals = Record(
 pre_decode_t = Record(
     # 原始控制信号
     alu_func=Bits(16),
-    csr_alu_op=Bits(3),
+    csr_alu_func=Bits(3),
     op1_sel=Bits(3),
     op2_sel=Bits(3),
+    csr_op_sel=Bits(1),
     branch_type=Bits(16),  # Branch 指令功能码
     next_pc_addr=Bits(32),  # IF 预测结果
     # 嵌套的后续阶段控制

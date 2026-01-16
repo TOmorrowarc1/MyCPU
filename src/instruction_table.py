@@ -28,7 +28,7 @@ def BP(pattern_str):
 
 # RV32I 指令真值表
 # 表格列定义:
-# Key, BP, ImmType, (ALU_Func, Op1, Op2, branch_type), (Mem_Op, Width, Mem_Sign), WB, (csr_op_sel, csr_alu_op, csr_re, csr_we)
+# Key, BP, ImmType, (ALU_Func, Op1, Op2, branch_type), (Mem_Op, Width, Mem_Sign), WB, (csr_op_sel, csr_alu_func, csr_re, csr_we)
 
 rv32i_table = [
     # --- R-Type ---
