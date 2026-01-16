@@ -14,6 +14,7 @@ from .execution import Execution
 from .memory import MemoryAccess, SingleMemory
 from .writeback import WriteBack
 from .btb import BTB, BTBImpl
+from .CSRs import CSRsUnit
 
 # 全局工作区路径
 current_path = os.path.dirname(os.path.abspath(__file__))
@@ -102,7 +103,7 @@ def build_cpu(depth_log):
         # Current_Mode: 当前权限模式 (2位，合法值为 00: U-mode 与 11: M-mode)
         current_mode_reg = RegArray(Bits(2), 1, initializer=[0b11])
         # misa (0x301): 只读，硬连线为 0x40000100 (RV32I)
-        misa_reg = RegArray(Bits(32), 1, initializer=[0x00001800])
+        misa_reg = RegArray(Bits(32), 1, initializer=[0x40000100])
         # mstatus (0x300): 当前处理器状态，包含 MPP、MPIE、MIE 等字段
         mstatus_reg = RegArray(Bits(32), 1)
         # mie (0x304): Machine Interrupt Enable，包含 MEIE、MTIE、MSIE 字段
@@ -119,6 +120,12 @@ def build_cpu(depth_log):
         mtval_reg = RegArray(Bits(32), 1)
         # mtscratch (0x340): 可读写，任意用途寄存器
         mtscratch_reg = RegArray(Bits(32), 1)
+
+        # CSR 全局状态寄存器
+        flush_all_pc = RegArray(Bits(32), 1)
+        csr_wb_bypass_reg = RegArray(Bits(32), 1)
+        csr_mem_bypass_reg = RegArray(Bits(32), 1)
+        csr_ex_bypass_reg = RegArray(Bits(32), 1)
 
         # 2. 模块实例化
         fetcher = Fetcher()
@@ -137,68 +144,126 @@ def build_cpu(depth_log):
         memory_single = SingleMemory()
         writeback = WriteBack()
 
+        csrs_unit = CSRsUnit()
+
         driver = Driver()
 
         # 3. 逆序构建
 
-        # --- Step 0: BTB 构建（需要在使用前构建） ---
+        # --- BTB 构建（需要在使用前构建） ---
         btb_valid, btb_tags, btb_targets = btb.build()
 
-        # --- Step A: WB 阶段 ---
-        wb_rd = writeback.build(
+        # --- WB 阶段 ---
+        (
+            wb_rd,
+            wb_csr_waddr,
+            csr_wdata,
+            exception_valid,
+            exception_code,
+            exception_val,
+            wb_pc,
+            is_mret,
+        ) = writeback.build(
             reg_file=reg_file,
             wb_bypass_reg=wb_bypass_reg,
+            csr_wb_bypass_reg=csr_wb_bypass_reg,
+            flush_all_pc=flush_all_pc,
         )
 
-        # --- Step B: MEM 阶段 ---
-        mem_rd, mem_is_store = memory_unit.build(
+        # --- MEM 阶段 ---
+        mem_rd, mem_csr_waddr, mem_pc, mem_is_store = memory_unit.build(
             wb_module=writeback,
             sram_dout=cache.dout,
             mem_bypass_reg=mem_bypass_reg,
+            csr_mem_bypass_reg=csr_mem_bypass_reg,
+            flush_all_pc=flush_all_pc,
         )
 
-        # --- Step C: EX 阶段 ---
-        ex_rd, ex_addr, ex_is_load, ex_is_store, ex_width, ex_rs2 = executor.build(
+        # --- EX 阶段 ---
+        (
+            ex_rd,
+            ex_csr_addr,
+            ex_mem_addr,
+            ex_is_load,
+            ex_is_store,
+            ex_width,
+            ex_mem_data,
+        ) = executor.build(
             mem_module=memory_unit,
             ex_bypass=ex_bypass_reg,
             mem_bypass=mem_bypass_reg,
             wb_bypass=wb_bypass_reg,
-            branch_target_reg=branch_target_reg,
+            csr_ex_bypass=csr_ex_bypass_reg,
+            csr_mem_bypass=csr_mem_bypass_reg,
+            csr_wb_bypass=csr_wb_bypass_reg,
+            br_target_reg=branch_target_reg,
+            flush_all_pc=flush_all_pc,
             btb_impl=btb_impl,
             btb_valid=btb_valid,
             btb_tags=btb_tags,
             btb_targets=btb_targets,
         )
 
-        # --- Step D: ID 阶段 (Shell) ---
-        pre_pkt, rs1, rs2 = decoder.build(
+        # --- ID 阶段-解码 ---
+        pre_pkt, rs1, rs2, csr_raddr = decoder.build(
             icache_dout=cache.dout,
             reg_file=reg_file,
+            current_mode=current_mode_reg,
         )
 
-        # --- Step E: Hazard Unit ---
-        rs1_sel, rs2_sel, stall_if = hazard_unit.build(
+        # --- Hazard Unit ---
+        rs1_sel, rs2_sel, csr_sel, stall_if = hazard_unit.build(
             rs1_idx=rs1,
             rs2_idx=rs2,
+            csr_raddr=csr_raddr,
             ex_rd=ex_rd,
+            ex_csr_waddr=ex_csr_addr,
             ex_is_load=ex_is_load,
             ex_is_store=ex_is_store,
             mem_is_store=mem_is_store,
             mem_rd=mem_rd,
+            mem_csr_waddr=mem_csr_waddr,
             wb_rd=wb_rd,
+            wb_csr_waddr=wb_csr_waddr,
         )
 
-        # --- Step F: ID 阶段 (Core) ---
+        # --- CSRs Unit ---
+        csr_rdata, update_handling = csrs_unit.build(
+            current_mode=current_mode_reg,
+            mstatus=mstatus_reg,
+            mie=mie_reg,
+            mip=mip_reg,
+            mtvec=mtvec_reg,
+            mepc=mepc_reg,
+            mcause=mcause_reg,
+            mtval=mtval_reg,
+            mscratch=mtscratch_reg,
+            csr_raddr=csr_raddr,
+            csr_waddr=wb_csr_waddr,
+            csr_wdata=csr_wdata,
+            Exception_Valid=exception_valid,
+            Exception_Code=exception_code,
+            Exception_Val=exception_val,
+            WB_PC=wb_pc,
+            MEM_PC=mem_pc,
+            is_mret=is_mret,
+            flush_all_pc=flush_all_pc,
+        )
+
+        # --- ID 阶段-仲裁 ---
         decoder_impl.build(
             pre=pre_pkt,
             executor=executor,
             rs1_sel=rs1_sel,
             rs2_sel=rs2_sel,
+            csr_sel=csr_sel,
             stall_if=stall_if,
-            branch_target_reg=branch_target_reg,
+            br_target_pc=branch_target_reg,
+            flush_all_pc=flush_all_pc,
+            csr_data=csr_rdata,
         )
 
-        # --- Step G: IF 阶段 ---
+        # --- IF 阶段 ---
         pc_reg, pc_addr, last_pc_reg = fetcher.build()
         current_pc = fetcher_impl.build(
             pc_reg=pc_reg,
@@ -207,28 +272,27 @@ def build_cpu(depth_log):
             decoder=decoder,
             stall_if=stall_if,
             branch_target=branch_target_reg,
+            flush_all_pc=flush_all_pc,
             btb_impl=btb_impl,
             btb_valid=btb_valid,
             btb_tags=btb_tags,
             btb_targets=btb_targets,
         )
 
-        # --- Step H: SRAM 驱动 ---
+        # --- SRAM 驱动 ---
         memory_single.build(
             if_addr=current_pc,
-            mem_addr=ex_addr,
+            mem_addr=ex_mem_addr,
             re=ex_is_load,
             we=ex_is_store,
-            wdata=ex_rs2,
+            wdata=ex_mem_data,
             width=ex_width,
             sram=cache,
+            flush_all_signal=update_handling,
         )
 
-        # --- Step I: 辅助驱动 ---
+        # --- 辅助驱动 ---
         driver.build(fetcher=fetcher)
-
-        """RegArray exposing"""
-        sys.expose_on_top(reg_file, kind="Output")
 
     return sys
 
