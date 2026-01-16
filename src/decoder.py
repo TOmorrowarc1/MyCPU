@@ -34,7 +34,7 @@ class Decoder(Module):
         fetch_exception_vaild = id_ctrl.Exception_Valid
         fetch_exception_code = id_ctrl.Exception_Code
         fetch_exception_val = id_ctrl.Exception_Val
-        stall_if = id_ctrl.Stall_IF
+        stall_if = id_ctrl.stall_if
         pc = id_ctrl.PC
         # 从 SRAM 输出获取指令
         icache_inst = icache_dout[0].bitcast(Bits(32))
@@ -86,11 +86,12 @@ class Decoder(Module):
         acc_alu_func = Bits(16)(0)
         acc_op1_sel = Bits(3)(0)
         acc_op2_sel = Bits(3)(0)
-        acc_imm_type = Bits(6)(0)
+        acc_imm_type = Bits(7)(0)
         acc_br_type = Bits(16)(0)
         acc_mem_op = Bits(3)(0)
         acc_mem_wid = Bits(3)(0)
         acc_mem_uns = Bits(1)(0)
+        acc_mem_we = Bits(1)(0)
         # CSR 相关控制信号累加器
         acc_csr_op_sel = Bits(1)(0)
         acc_csr_alu_func = Bits(3)(0)
@@ -116,7 +117,7 @@ class Decoder(Module):
             has_match |= match_if
             # --- B. 信号累加 (Mux Logic) ---
             # 使用 select 实现 OR 逻辑
-            acc_imm_type |= match_if.select(t_imm_type, Bits(6)(0))
+            acc_imm_type |= match_if.select(t_imm_type, Bits(7)(0))
             acc_alu_func |= match_if.select(t_alu_func, Bits(16)(0))
             acc_op1_sel |= match_if.select(t_op1_sel, Bits(3)(0))
             acc_op2_sel |= match_if.select(t_op2_sel, Bits(3)(0))
@@ -124,7 +125,7 @@ class Decoder(Module):
             acc_mem_op |= match_if.select(t_mem_op, Bits(3)(0))
             acc_mem_wid |= match_if.select(t_mem_width, Bits(3)(0))
             acc_mem_uns |= match_if.select(t_mem_sign, Bits(1)(0))
-            acc_we |= match_if.select(t_we, Bits(1)(0))
+            acc_mem_we |= match_if.select(t_we, Bits(1)(0))
             # CSR 相关信号累加
             acc_csr_op_sel |= match_if.select(t_csr_op_sel, Bits(1)(0))
             acc_csr_alu_func |= match_if.select(t_csr_alu_func, Bits(3)(0))
@@ -141,7 +142,7 @@ class Decoder(Module):
             imm_z,
         )
         # 加工: rd & csr_addr 读写使能
-        id_rd = acc_we.select(rd, Bits(5)(0))
+        id_rd = acc_mem_we.select(rd, Bits(5)(0))
         # Ziscr 指令 rd = x0 时不读 CSR, rs1/zimm = 0 时不写 CSR
         id_csr_re = (rd != Bits(5)(0)) & (acc_csr_re == CSRRe.ENABLE)
         id_csr_we = ((rs1 != Bits(5)(0)) | (acc_csr_alu_func == CSRALUOp.CSR_RW)) & (
@@ -162,7 +163,7 @@ class Decoder(Module):
         is_csr_ro = csr_addr[10:11] == Bits(2)(0b11)
         # TODO: 完善 CSR 未定义列表
         csr_access_fault = (
-            (acc_csr_re | acc_csr_we) & ((in_umode & csr_in_mmode) | csr_undefined)
+            (acc_csr_re | acc_csr_we) & ((in_umode & csr_in_mmode))
         ) | (acc_csr_we & is_csr_ro)
         # 4.1.2 MRET 权限检查: 只有 M-Mode (11) 可以执行 mret，否则报非法指令
         is_mret_inst = inst == Bits(32)(0x30200073)
@@ -212,7 +213,7 @@ class Decoder(Module):
 
         pre = pre_decode_t.bundle(
             alu_func=acc_alu_func,
-            csr_alu_op=acc_csr_alu_func,
+            csr_alu_func=acc_csr_alu_func,
             op1_sel=acc_op1_sel,
             op2_sel=acc_op2_sel,
             csr_op_sel=acc_csr_op_sel,

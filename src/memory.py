@@ -25,7 +25,7 @@ class MemoryAccess(Module):
         wb_module: Module,  # 下一级流水线 (writeback.py)
         sram_dout: Array,  # SRAM 的输出端口 (Ref)
         mem_bypass_reg: Array,  # 全局 Bypass 寄存器 (数据)
-        mem_csr_bypass_reg: Array,  # 全局 CSR 旁路寄存器 (数据)
+        csr_mem_bypass_reg: Array,  # 全局 CSR 旁路寄存器 (数据)
         flush_all_pc: Array,  # 全局流水线冲刷信号 (Ref)
     ):
         # 1. 弹出并解包，提取需要的控制信号
@@ -103,7 +103,7 @@ class MemoryAccess(Module):
         # 驱动级间 Bypass 寄存器
         # 注意：如果当前是气泡 (rd=0)，写入 0 也是安全的
         mem_bypass_reg[0] <= MEM_result_wdata
-        mem_csr_bypass_reg[0] <= MEM_result_csr_wdata
+        csr_mem_bypass_reg[0] <= MEM_result_csr_wdata
         log("MEM: Bypass <= 0x{:x}", MEM_result_wdata)
 
         # 5. 捆绑信号，驱动下一级 WB
