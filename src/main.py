@@ -101,7 +101,7 @@ def build_cpu(depth_log):
 
         # CSR 寄存器
         # Current_Mode: 当前权限模式 (2位，合法值为 00: U-mode 与 11: M-mode)
-        current_mode_reg = RegArray(Bits(2), 1, initializer=[0b11])
+        current_mode_reg = RegArray(Bits(2), 1, initializer=[0b00])
         # misa (0x301): 只读，硬连线为 0x40000100 (RV32I)
         misa_reg = RegArray(Bits(32), 1, initializer=[0x40000100])
         # mstatus (0x300): 当前处理器状态，包含 MPP、MPIE、MIE 等字段

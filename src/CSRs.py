@@ -95,22 +95,21 @@ class CSRsUnit(Downstream):
         # Trap mstatus 更新
         trap_mstatus = mstatus[0]
         old_mie = mstatus[0][3:3]
-        trap_mstatus[7:7] = old_mie  # MPIE ← MIE
-        trap_mstatus[11:12] = current_mode[0]  # mstatus.MPP ← Current_Mode
-        trap_mstatus[3:3] = Bits(1)(0)  # mstatus.MIE ← 0
+        # 使用 concat 重新构建 trap_mstatus
+        trap_mstatus = concat(trap_mstatus[13:31], current_mode[0], trap_mstatus[8:10], old_mie, trap_mstatus[4:6], Bits(1)(0), trap_mstatus[0:2])
         # Mret mstatus 更新
         untrap_mstatus = mstatus[0]
         old_mpie = mstatus[0][7:7]
-        untrap_mstatus[3:3] = old_mpie  # MIE ← MPIE
-        untrap_mstatus[7:7] = Bits(1)(1)  # MPIE ← 1
-        untrap_mstatus[11:12] = Bits(2)(0b00)  # MPP ← U-Mode (00)
+        # 使用 concat 重新构建 untrap_mstatus
+        untrap_mstatus = concat(untrap_mstatus[13:31], Bits(2)(0b00), untrap_mstatus[8:10], Bits(1)(1), untrap_mstatus[4:6], old_mpie, untrap_mstatus[0:2])
         update_mstatus = is_mret_val.select(untrap_mstatus, trap_mstatus)
         # CSR 写入 mstatus
         mstatus_mask = Bits(32)(0x00001888)
         w_mstatus_value = (mstatus[0] & ~mstatus_mask) | (csr_wdata_val & mstatus_mask)
         mpp = w_mstatus_value[11:12]
         legal_mpp = (mpp[1:1] == Bits(1)(1)).select(Bits(2)(0b11), Bits(2)(0b00))
-        w_mstatus_value[11:12] = legal_mpp
+        # 使用 concat 重新构建 w_mstatus_value
+        w_mstatus_value = concat(w_mstatus_value[13:31], legal_mpp, w_mstatus_value[0:10])
         write_mstatus = (csr_waddr_val == Bits(12)(0x300)).select(
             w_mstatus_value, mstatus[0]
         )
@@ -166,7 +165,8 @@ class CSRsUnit(Downstream):
         w_mtvec_value = (mtvec[0] & ~mtvec_mask) | (csr_wdata_val & mtvec_mask)
         mode = w_mtvec_value[0:1]
         legal_mode = (mode == Bits(2)(1)).select(Bits(2)(1), Bits(2)(0))
-        w_mtvec_value[0:1] = legal_mode
+        # 使用 concat 重新构建 w_mtvec_value
+        w_mtvec_value = concat(w_mtvec_value[2:31], legal_mode)
         mtvec[0] <= ((csr_waddr_val == Bits(12)(0x305)) & ~update_handling).select(
             w_mtvec_value, mtvec[0]
         )

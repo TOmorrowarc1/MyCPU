@@ -265,7 +265,6 @@ class Execution(Module):
 
         # --- 下一级绑定与状态反馈 ---
         # 1. 检查：L/S Addr Misaligned (Exception Code 0x04/0x06)
-        alu_result_lower2 = alu_result[0:2]
         is_load_store = (mem_ctrl.mem_opcode == MemOp.LOAD) | (
             mem_ctrl.mem_opcode == MemOp.STORE
         )
@@ -275,11 +274,11 @@ class Execution(Module):
             & (
                 (
                     (mem_ctrl.mem_width == MemWidth.HALF)
-                    & (alu_result_lower2[0:1] != Bits(1)(0))
+                    & (alu_result[0:0] != Bits(1)(0))
                 )
                 | (
                     (mem_ctrl.mem_width == MemWidth.WORD)
-                    & (alu_result_lower2 != Bits(2)(0))
+                    & (alu_result[0:1] != Bits(2)(0))
                 )
             )
         )
@@ -291,7 +290,11 @@ class Execution(Module):
         )
         exception_val = addr_misaligned.select(alu_result, Bits(32)(0))
         with Condition(addr_misaligned):
-            log("EX: Exception Detected - Load/Store Address Misaligned")
+            log(
+                "EX: Address Misaligned Detected with addr 0x{:x}, mem_opcode=0x{:x}",
+                alu_result,
+                mem_ctrl.mem_opcode,
+            )
 
         # 2. 构造控制信号包
         ex_result_rd = (flush_if | addr_misaligned).select(Bits(5)(0), wb_ctrl.rd_addr)

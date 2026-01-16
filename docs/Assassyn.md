@@ -194,7 +194,7 @@
 
 对导线进行物理上的拆分和重组。
 
-### 1. `signal[high:low]`
+### 1. `signal[low:high]`
 *   **作用**：位截取 (Bit Slicing)。
     > Assassyn 使用 **[低位:高位]** 的闭区间格式（类似 Verilog），与 Python 原生的 `[start:end]`（左闭右开）不同。
 *   **物理含义**：从总线中引出部分导线。
