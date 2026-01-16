@@ -43,6 +43,19 @@ class CSRsUnit(Downstream):
         MEM_PC_val = MEM_PC.optional(Bits(32)(0))
         is_mret_val = is_mret.optional(Bits(1)(0))
 
+        log(
+            "Privileged ISA-CSR Input: raddr: {}, waddr: {}, wdata: {}, Exception_Valid: {}, Exception_Code: {}, Exception_Val: {}, WB_PC: {}, MEM_PC: {}, is_mret: {}",
+            csr_raddr_val,
+            csr_waddr_val,
+            csr_wdata_val,
+            Exception_Valid_val,
+            Exception_Code_val,
+            Exception_Val_val,
+            WB_PC_val,
+            MEM_PC_val,
+            is_mret_val,
+        )
+
         # 1. CSR 读取逻辑 (ID Stage)
         # 读取 CSR 寄存器值，其他合法寄存器返回 0
         csr_rdata = Bits(32)(0)
@@ -80,28 +93,44 @@ class CSRsUnit(Downstream):
             with Condition(current_mode[0] == Bits(2)(0b11)):
                 log("ERROR: Double trap in M-mode!")
                 finish()
-                
+
         # 综合 Trap 与 MRET 信号，确定是否进行状态更新
         update_handling = trap_handling | is_mret_val
-        
+
         # 根据 Trap 信号、 mret 信号与写入信号进行状态迁移
         # Current_Mode ← M-Mode (11) 或 mstatus.MPP > 不变
         untrap_current_mode = mstatus[0][11:12]
         trap_current_mode = Bits(2)(0b11)
         update_current_mode = is_mret_val.select(untrap_current_mode, trap_current_mode)
         current_mode[0] <= update_handling.select(update_current_mode, current_mode[0])
-        
+
         # 更新 mstatus: Trap/UnTrap > 写入 > 原值
         # Trap mstatus 更新
         trap_mstatus = mstatus[0]
         old_mie = mstatus[0][3:3]
         # 使用 concat 重新构建 trap_mstatus
-        trap_mstatus = concat(trap_mstatus[13:31], current_mode[0], trap_mstatus[8:10], old_mie, trap_mstatus[4:6], Bits(1)(0), trap_mstatus[0:2])
+        trap_mstatus = concat(
+            trap_mstatus[13:31],
+            current_mode[0],
+            trap_mstatus[8:10],
+            old_mie,
+            trap_mstatus[4:6],
+            Bits(1)(0),
+            trap_mstatus[0:2],
+        )
         # Mret mstatus 更新
         untrap_mstatus = mstatus[0]
         old_mpie = mstatus[0][7:7]
         # 使用 concat 重新构建 untrap_mstatus
-        untrap_mstatus = concat(untrap_mstatus[13:31], Bits(2)(0b00), untrap_mstatus[8:10], Bits(1)(1), untrap_mstatus[4:6], old_mpie, untrap_mstatus[0:2])
+        untrap_mstatus = concat(
+            untrap_mstatus[13:31],
+            Bits(2)(0b00),
+            untrap_mstatus[8:10],
+            Bits(1)(1),
+            untrap_mstatus[4:6],
+            old_mpie,
+            untrap_mstatus[0:2],
+        )
         update_mstatus = is_mret_val.select(untrap_mstatus, trap_mstatus)
         # CSR 写入 mstatus
         mstatus_mask = Bits(32)(0x00001888)
@@ -109,26 +138,28 @@ class CSRsUnit(Downstream):
         mpp = w_mstatus_value[11:12]
         legal_mpp = (mpp[1:1] == Bits(1)(1)).select(Bits(2)(0b11), Bits(2)(0b00))
         # 使用 concat 重新构建 w_mstatus_value
-        w_mstatus_value = concat(w_mstatus_value[13:31], legal_mpp, w_mstatus_value[0:10])
+        w_mstatus_value = concat(
+            w_mstatus_value[13:31], legal_mpp, w_mstatus_value[0:10]
+        )
         write_mstatus = (csr_waddr_val == Bits(12)(0x300)).select(
             w_mstatus_value, mstatus[0]
         )
         mstatus[0] <= update_handling.select(update_mstatus, write_mstatus)
-        
+
         # mie 只因写入更改，但中断所在周期不进行更改
         mie_mask = Bits(32)(0x00000888)
         w_mie_value = (mie[0] & ~mie_mask) | (csr_wdata_val & mie_mask)
         mie[0] <= ((csr_waddr_val == Bits(12)(0x304)) & ~update_handling).select(
             w_mie_value, mie[0]
         )
-        
+
         # mip 只因写入更改，但中断所在周期不进行更改
         mip_mask = Bits(32)(0x00000008)
         w_mip_value = (mip[0] & ~mip_mask) | (csr_wdata_val & mip_mask)
         mip[0] <= ((csr_waddr_val == Bits(12)(0x344)) & ~update_handling).select(
             w_mip_value, mip[0]
         )
-        
+
         # mepc ← Trap_PC > 写入 > 原值
         Trap_PC = exception_handling.select(WB_PC_val, MEM_PC_val)
         trap_mepc = Trap_PC & Bits(32)(0xFFFFFFFC)
@@ -136,7 +167,7 @@ class CSRsUnit(Downstream):
         w_mepc_value = csr_wdata_val & mepc_mask
         write_mepc = (csr_waddr_val == Bits(12)(0x341)).select(w_mepc_value, mepc[0])
         mepc[0] <= trap_handling.select(trap_mepc, write_mepc)
-        
+
         # mcause ← Exception Code/ Interrupt Code > 写入 > 原值
         mti_code = (mie[0][7:7] & mip[0][7:7] != Bits(1)(0)).select(
             Bits(32)(7), Bits(32)(0)
@@ -154,12 +185,12 @@ class CSRsUnit(Downstream):
             csr_wdata_val, mcause[0]
         )
         mcause[0] <= trap_handling.select(trap_mcause, write_mcause)
-        
+
         # mtval ← Exception_Val > 写入 > 原值
         trap_mtval = exception_handling.select(Exception_Val_val, Bits(32)(0))
         write_mtval = (csr_waddr_val == Bits(12)(0x343)).select(csr_wdata_val, mtval[0])
         mtval[0] <= trap_handling.select(trap_mtval, write_mtval)
-        
+
         # mtvec 只因写入改变，但中断所在周期不进行更改
         mtvec_mask = Bits(32)(0xFFFFFFFD)
         w_mtvec_value = (mtvec[0] & ~mtvec_mask) | (csr_wdata_val & mtvec_mask)
@@ -170,12 +201,12 @@ class CSRsUnit(Downstream):
         mtvec[0] <= ((csr_waddr_val == Bits(12)(0x305)) & ~update_handling).select(
             w_mtvec_value, mtvec[0]
         )
-        
+
         # mscratch 写入
         mscratch[0] <= ((csr_waddr_val == Bits(12)(0x340)) & ~update_handling).select(
             csr_wdata_val, mscratch[0]
         )
-        
+
         # Trap 时跳转到 mtvec 指示位置，设置冲刷信号。
         mtvec_base = mtvec[0] & Bits(32)(0xFFFFFFFC)
         mtvec_mode = mtvec[0][0:1]
@@ -191,6 +222,23 @@ class CSRsUnit(Downstream):
         # 接口寄存器更新
         flush_all_pc[0] <= update_handling.select(update_pc, Bits(32)(0))
 
+        log(
+            "Privileged ISA-CSR status: mstatus: {}, mie: {}, mip: {}, mtvec: {}, mepc: {}, mcause: {}, mtval: {}, current_mode: {}, flush_all_pc: {}",
+            mstatus[0],
+            mie[0],
+            mip[0],
+            mtvec[0],
+            mepc[0],
+            mcause[0],
+            mtval[0],
+            current_mode[0],
+            flush_all_pc[0],
+        )
+        log(
+            "Privileged ISA-CSR Output: rdata: {}, update_handling:{}",
+            csr_rdata,
+            update_handling,
+        )
 
         # 返回输出信号
         return csr_rdata, update_handling
