@@ -173,7 +173,7 @@ class SingleMemory(Downstream):
         # 2. 状态迁移逻辑
         # latch_state 更新
         latch_if = latch_state[0] != Bits(2)(0)
-        latch_refresh = (we_val | mmio_e) & (~latch_if) & (~flush_if)
+        latch_refresh = (we_val | mmio_e_val) & (~latch_if) & (~flush_if)
         mem_result_state = concat(mmio_e_val, we_val)
         latch_state[0] <= latch_refresh.select(mem_result_state, Bits(2)(0))
         # 地址寄存器更新
@@ -185,16 +185,16 @@ class SingleMemory(Downstream):
 
         # 3. SRAM 输入计算
         # 读使能/写使能确定
-        SRAM_we = latch_state[0][0:0] & ~flush_if
-        SRAM_re = ~latch_state[0][0:0] & ~flush_if
+        SRAM_we = (latch_state[0][0:0]) & ~flush_if
+        SRAM_re = ~(latch_state[0][0:0]) & ~flush_if
         # 地址计算与仲裁
         mem_result_addr = latch_if.select(latch_addr[0], mem_addr_val)
         ex_request = we_val | re_val | latch_if
         SRAM_addr = ex_request.select(mem_result_addr, if_addr_val)
 
         # 写数据计算
-        result_wdata = latch_state[0].select(latch_data[0], Bits(32)(0))
-        result_width = latch_state[0].select(latch_width[0], Bits(3)(1))
+        result_wdata = latch_state[0][0:0].select(latch_data[0], Bits(32)(0))
+        result_width = latch_state[0][0:0].select(latch_width[0], Bits(3)(1))
         # 计算位偏移 (addr[0:1] * 8)
         shamt = (mem_result_addr[0:1].concat(Bits(3)(0))).bitcast(UInt(5))
         # 生成基础掩码
