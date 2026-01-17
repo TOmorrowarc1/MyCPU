@@ -340,17 +340,10 @@ class Execution(Module):
             mem_unsigned=mem_ctrl.mem_unsigned,
             wb_ctrl=ex_result_wb_ctrl,
         )
-        # 3. 级间信号：控制 + 数据
-        mem_call = mem_module.async_called(
-            ctrl=ex_result_mem_ctrl, alu_result=alu_result, csr_result=csr_alu_result
-        )
-        mem_call.bind.set_fifo_depth(ctrl=1, alu_result=1, csr_result=1)
-        # 4. 访存操作: 将所需的信号作为引脚给出，交给 SingleMemory 处理
+        # 3. 级间信号与访存：控制 + 数据，将所需的信号作为引脚给出或压入寄存器，交给 MEM 处理
         is_store = (ex_result_mem_opcode == MemOp.STORE) & (~ex_result_halt_if)
         is_load = ex_result_mem_opcode == MemOp.LOAD
-        is_mmio = is_load_store & (
-            alu_result.bitcast(UInt(32)) >= UInt(32)(0x10000)
-        )
+        is_mmio = is_load_store & (alu_result.bitcast(UInt(32)) >= UInt(32)(0x10000))
         mem_width = ex_result_mem_ctrl.mem_width
         with Condition(is_store):
             log("EX: Memory Operation: STORE")
@@ -359,6 +352,14 @@ class Execution(Module):
         with Condition(is_load):
             log("EX: Memory Operation: LOAD")
             log("EX: Load Address: 0x{:x}", alu_result)
+
+        mem_call = mem_module.async_called(
+            ctrl=ex_result_mem_ctrl,
+            mmio_e=is_mmio,
+            alu_result=alu_result,
+            csr_result=csr_alu_result,
+        )
+        mem_call.bind.set_fifo_depth(ctrl=1, mmio_e=1, alu_result=1, csr_result=1)
 
         # 返回引脚 (供 HazardUnit 与 SingleMemory 使用)
         return (

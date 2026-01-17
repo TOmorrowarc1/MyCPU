@@ -1,0 +1,72 @@
+
+output.elf:     file format elf32-littleriscv
+
+
+Disassembly of section .text:
+
+00000000 <_start>:
+   0:	00000297          	auipc	t0,0x0
+   4:	04428293          	addi	t0,t0,68 # 44 <trap_vector>
+   8:	30529073          	csrw	mtvec,t0
+   c:	80001137          	lui	sp,0x80001
+  10:	000012b7          	lui	t0,0x1
+  14:	88828293          	addi	t0,t0,-1912 # 888 <_bss_end+0x7b4>
+  18:	30429073          	csrw	mie,t0
+  1c:	00000297          	auipc	t0,0x0
+  20:	09428293          	addi	t0,t0,148 # b0 <main_test>
+  24:	34129073          	csrw	mepc,t0
+  28:	300022f3          	csrr	t0,mstatus
+  2c:	ffffe337          	lui	t1,0xffffe
+  30:	7ff30313          	addi	t1,t1,2047 # ffffe7ff <_bss_end+0xffffe72b>
+  34:	0062f2b3          	and	t0,t0,t1
+  38:	0802e293          	ori	t0,t0,128
+  3c:	30029073          	csrw	mstatus,t0
+  40:	30200073          	mret
+
+00000044 <trap_vector>:
+  44:	fc010113          	addi	sp,sp,-64 # 80000fc0 <_bss_end+0x80000eec>
+  48:	00512023          	sw	t0,0(sp)
+  4c:	00612223          	sw	t1,4(sp)
+  50:	00712423          	sw	t2,8(sp)
+  54:	00a12623          	sw	a0,12(sp)
+  58:	342022f3          	csrr	t0,mcause
+  5c:	34102373          	csrr	t1,mepc
+  60:	343023f3          	csrr	t2,mtval
+  64:	0202c463          	bltz	t0,8c <handle_interrupt>
+
+00000068 <handle_exception>:
+  68:	00000e13          	li	t3,0
+  6c:	01c28863          	beq	t0,t3,7c <fix_misalign>
+  70:	00430313          	addi	t1,t1,4
+  74:	34131073          	csrw	mepc,t1
+  78:	0200006f          	j	98 <exit_trap>
+
+0000007c <fix_misalign>:
+  7c:	ffc37313          	andi	t1,t1,-4
+  80:	00430313          	addi	t1,t1,4
+  84:	34131073          	csrw	mepc,t1
+  88:	0100006f          	j	98 <exit_trap>
+
+0000008c <handle_interrupt>:
+  8c:	00800e13          	li	t3,8
+  90:	344e3073          	csrc	mip,t3
+  94:	0040006f          	j	98 <exit_trap>
+
+00000098 <exit_trap>:
+  98:	00012283          	lw	t0,0(sp)
+  9c:	00412303          	lw	t1,4(sp)
+  a0:	00812383          	lw	t2,8(sp)
+  a4:	00c12503          	lw	a0,12(sp)
+  a8:	04010113          	addi	sp,sp,64
+  ac:	30200073          	mret
+
+000000b0 <main_test>:
+  b0:	00010437          	lui	s0,0x10
+  b4:	deadc2b7          	lui	t0,0xdeadc
+  b8:	eef28293          	addi	t0,t0,-273 # deadbeef <_bss_end+0xdeadbe1b>
+  bc:	00542023          	sw	t0,0(s0) # 10000 <_bss_end+0xff2c>
+  c0:	00000013          	nop
+  c4:	00000013          	nop
+  c8:	fe000fa3          	sb	zero,-1(zero)
+  cc:	00000013          	nop
+  d0:	00000013          	nop

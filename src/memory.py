@@ -6,8 +6,9 @@ class MemoryAccess(Module):
     def __init__(self):
         super().__init__(
             ports={
-                # 1. 控制通道：包含 mem_opcode, mem_width, mem_unsigned, rd_addr
+                # 1. 控制通道：包含 mem_opcode, mem_width, mem_unsigned, rd_addr, mmio_e
                 "ctrl": Port(mem_ctrl_signals),
+                "mmio_e": Port(Bits(1)),
                 # 2. 统一数据通道：
                 # - Load/Store 指令：SRAM 地址 (用于切割数据)
                 # - ALU 指令：计算结果
@@ -29,7 +30,7 @@ class MemoryAccess(Module):
         flush_all_pc: Array,  # 全局流水线冲刷信号 (Ref)
     ):
         # 1. 弹出并解包，提取需要的控制信号
-        ctrl, alu_result, csr_result = self.pop_all_ports(False)
+        ctrl, mmio_e, alu_result, csr_result = self.pop_all_ports(False)
         mem_opcode = ctrl.mem_opcode
         mem_width = ctrl.mem_width
         mem_unsigned = ctrl.mem_unsigned
@@ -97,6 +98,7 @@ class MemoryAccess(Module):
         # 如果是 Load 指令，用加工后的内存数据；否则用 EX 传下来的 alu_result
         is_load = mem_opcode == MemOp.LOAD  # 检查是否为 Load 指令
         is_store = mem_opcode == MemOp.STORE  # 检查是否为 Store 指令
+        mem_is_busy = is_store | mmio_e
         MEM_result_wdata = is_load.select(processed_mem_result, alu_result)
 
         # 4. 输出驱动 (Output Driver)
@@ -126,7 +128,7 @@ class MemoryAccess(Module):
         wb_call.bind.set_fifo_depth(ctrl=1, wdata=1, csr_wdata=1)
 
         # 引脚暴露 (供 HazardUnit 与 CSRsUnit 使用)
-        return MEM_result_rd, MEM_result_csr_waddr, MEM_pc, is_store
+        return MEM_result_rd, MEM_result_csr_waddr, MEM_pc, mem_is_busy
 
 
 class SingleMemory(Downstream):
@@ -174,6 +176,8 @@ class SingleMemory(Downstream):
         # latch_state 更新
         latch_if = latch_state[0] != Bits(2)(0)
         latch_refresh = (we_val | mmio_e_val) & (~latch_if) & (~flush_if)
+        with Condition(flush_if):
+            log("SingleMEM: Flush latch_state to IDLE.")
         mem_result_state = concat(mmio_e_val, we_val)
         latch_state[0] <= latch_refresh.select(mem_result_state, Bits(2)(0))
         # 地址寄存器更新

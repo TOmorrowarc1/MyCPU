@@ -157,7 +157,7 @@ class CSRsUnit(Downstream):
         mip_mask = Bits(32)(0x00000008)
         w_mip_value = (mip[0] & ~mip_mask) | (csr_wdata_val & mip_mask)
         mip[0] <= ((csr_waddr_val == Bits(12)(0x344)) & ~update_handling).select(
-            w_mip_value, extern_simu_reg[0] | mip[0] # 模拟外设
+            w_mip_value, extern_simu_reg[0] | (mip[0] & mip_mask)  # 模拟外设
         )
 
         # mepc ← Trap_PC > 写入 > 原值
@@ -223,7 +223,8 @@ class CSRsUnit(Downstream):
         flush_all_pc[0] <= update_handling.select(update_pc, Bits(32)(0))
 
         log(
-            "Privileged ISA-CSR status: mstatus: {:x}, mie: {:x}, mip: {:x}, mtvec: {:x}, mepc: {:x}, mcause: {:x}, mtval: {:x}, current_mode: {:x}, flush_all_pc: {:x}",
+            "Privileged ISA-CSR status: current_mode: {:x} mstatus: {:x}, mie: {:x}, mip: {:x}, mtvec: {:x}, mepc: {:x}, mcause: {:x}, mtval: {:x}, current_mode: {:x}, flush_all_pc: {:x}",
+            current_mode[0],
             mstatus[0],
             mie[0],
             mip[0],

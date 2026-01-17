@@ -74,7 +74,18 @@ class Driver(Module):
         super().__init__(ports={})
 
     @module.combinational
-    def build(self, fetcher: Module):
+    def build(
+        self,
+        fetcher: Module,
+        external_simu_reg: Array,
+    ):
+        with Condition(external_simu_reg[0] != Bits(32)(0)):
+            external_simu_reg[0] <= Bits(32)(0)
+
+        log(
+            "Privileged ISA: external simulation register status 0x{:x}",
+            external_simu_reg[0],
+        )
         fetcher.async_called()
 
 
@@ -174,7 +185,7 @@ def build_cpu(depth_log):
         )
 
         # --- MEM 阶段 ---
-        mem_rd, mem_csr_waddr, mem_pc, mem_is_store = memory_unit.build(
+        mem_rd, mem_csr_waddr, mem_pc, mem_is_busy = memory_unit.build(
             wb_module=writeback,
             sram_dout=cache.dout,
             mem_bypass_reg=mem_bypass_reg,
@@ -224,7 +235,7 @@ def build_cpu(depth_log):
             ex_csr_waddr=ex_csr_addr,
             ex_is_load=ex_is_load,
             ex_is_store=ex_is_store,
-            mem_is_store=mem_is_store,
+            mem_is_busy=mem_is_busy,
             mem_rd=mem_rd,
             mem_csr_waddr=mem_csr_waddr,
             wb_rd=wb_rd,
@@ -300,7 +311,10 @@ def build_cpu(depth_log):
         )
 
         # --- 辅助驱动 ---
-        driver.build(fetcher=fetcher)
+        driver.build(
+            fetcher=fetcher,
+            external_simu_reg=extern_simu_reg,
+        )
 
     return sys
 
@@ -311,7 +325,7 @@ def build_cpu(depth_log):
 
 if __name__ == "__main__":
     # 构建 CPU 模块
-    load_test_case("multiply")
+    load_test_case("MMIO_interrupt")
     sys_builder = build_cpu(depth_log=16)
 
     circ_path = os.path.join(workspace, f"circ.txt")
@@ -323,9 +337,9 @@ if __name__ == "__main__":
     # 配置
     cfg = config(
         verilog=True,
-        sim_threshold=50000,
+        sim_threshold=5000,
         resource_base="",
-        idle_threshold=50000,
+        idle_threshold=5000,
     )
 
     # 生成源码

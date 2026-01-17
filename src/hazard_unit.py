@@ -20,7 +20,7 @@ class HazardUnit(Downstream):
         ex_csr_waddr: Value,  # EX 级 CSR 写寄存器索引
         ex_is_load: Value,  # EX 级是否为 Load 指令
         ex_is_store: Value,  # EX 级是否为 Store 指令
-        mem_is_store: Value,  # MEM 级是否为 Store 指令
+        mem_is_busy: Value,  # MEM 级中 Memory 是否忙
         mem_rd: Value,  # MEM 级目标寄存器索引
         mem_csr_waddr: Value,  # MEM 级 CSR 写寄存器索引
         wb_rd: Value,  # WB 级目标寄存器索引
@@ -34,7 +34,7 @@ class HazardUnit(Downstream):
         ex_csr_waddr_val = ex_csr_waddr.optional(Bits(12)(0))
         ex_is_load_val = ex_is_load.optional(Bits(1)(0))
         ex_is_store_val = ex_is_store.optional(Bits(1)(0))
-        mem_is_store_val = mem_is_store.optional(Bits(1)(0))
+        mem_is_busy_val = mem_is_busy.optional(Bits(1)(0))
         mem_rd_val = mem_rd.optional(Bits(5)(0))
         mem_csr_waddr_val = mem_csr_waddr.optional(Bits(12)(0))
         wb_rd_val = wb_rd.optional(Bits(5)(0))
@@ -47,7 +47,7 @@ class HazardUnit(Downstream):
 
         # 1. 检测 Load/Store 并生成 Stall 信号
         # 条件： ex_is_load == 1 || ex_is_store == 1 || mem_is_store == 1
-        stall_if = ex_is_load_val | ex_is_store_val | mem_is_store_val
+        stall_if = ex_is_load_val | ex_is_store_val | mem_is_busy_val
 
         # 2. 检测 Forwarding 并生成 Mux 选择码
         # 根据先前指令 rd 与当前指令 rs1、rs2 生成选择码 rs1_sel 与 rs2_sel
