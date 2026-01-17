@@ -30,6 +30,7 @@ class CSRsUnit(Downstream):
         WB_PC: Value,
         MEM_PC: Value,
         is_mret: Value,
+        extern_simu_reg: Array,
         # 输出接口：全局寄存器
         flush_all_pc: Array,
     ):
@@ -156,7 +157,7 @@ class CSRsUnit(Downstream):
         mip_mask = Bits(32)(0x00000008)
         w_mip_value = (mip[0] & ~mip_mask) | (csr_wdata_val & mip_mask)
         mip[0] <= ((csr_waddr_val == Bits(12)(0x344)) & ~update_handling).select(
-            w_mip_value, mip[0]
+            w_mip_value, extern_simu_reg[0] | mip[0] # 模拟外设
         )
 
         # mepc ← Trap_PC > 写入 > 原值
@@ -168,13 +169,13 @@ class CSRsUnit(Downstream):
         mepc[0] <= trap_handling.select(trap_mepc, write_mepc)
 
         # mcause ← Exception Code/ Interrupt Code > 写入 > 原值
-        mti_code = (mie[0][7:7] & mip[0][7:7] != Bits(1)(0)).select(
+        mti_code = (mie[0][7:7] & (mip[0][7:7] != Bits(1)(0))).select(
             Bits(32)(7), Bits(32)(0)
         )
-        msi_code = (mie[0][3:3] & mip[0][3:3] != Bits(1)(0)).select(
+        msi_code = (mie[0][3:3] & (mip[0][3:3] != Bits(1)(0))).select(
             Bits(32)(3), mti_code
         )
-        mei_code = (mie[0][11:11] & mip[0][11:11] != Bits(1)(0)).select(
+        mei_code = (mie[0][11:11] & (mip[0][11:11] != Bits(1)(0))).select(
             Bits(32)(11), msi_code
         )
         interrupt_code = Bits(32)(0x80000000) | mei_code

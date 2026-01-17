@@ -127,6 +127,9 @@ def build_cpu(depth_log):
         csr_mem_bypass_reg = RegArray(Bits(32), 1)
         csr_ex_bypass_reg = RegArray(Bits(32), 1)
 
+        # 外设模拟寄存器
+        extern_simu_reg = RegArray(Bits(32), 1)
+
         # 2. 模块实例化
         fetcher = Fetcher()
         fetcher_impl = FetcherImpl()
@@ -186,6 +189,7 @@ def build_cpu(depth_log):
             ex_mem_addr,
             ex_is_load,
             ex_is_store,
+            ex_is_mmio,
             ex_width,
             ex_mem_data,
         ) = executor.build(
@@ -248,6 +252,7 @@ def build_cpu(depth_log):
             WB_PC=wb_pc,
             MEM_PC=mem_pc,
             is_mret=is_mret,
+            extern_simu_reg=extern_simu_reg,
             flush_all_pc=flush_all_pc,
         )
 
@@ -286,10 +291,12 @@ def build_cpu(depth_log):
             mem_addr=ex_mem_addr,
             re=ex_is_load,
             we=ex_is_store,
+            mmio_e=ex_is_mmio,
             wdata=ex_mem_data,
             width=ex_width,
             sram=cache,
             flush_all_signal=update_handling,
+            extern_simu_reg=extern_simu_reg,
         )
 
         # --- 辅助驱动 ---

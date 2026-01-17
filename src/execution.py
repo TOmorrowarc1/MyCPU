@@ -348,6 +348,9 @@ class Execution(Module):
         # 4. 访存操作: 将所需的信号作为引脚给出，交给 SingleMemory 处理
         is_store = (ex_result_mem_opcode == MemOp.STORE) & (~ex_result_halt_if)
         is_load = ex_result_mem_opcode == MemOp.LOAD
+        is_mmio = is_load_store & (
+            alu_result.bitcast(UInt(32)) >= UInt(32)(0x10000)
+        )
         mem_width = ex_result_mem_ctrl.mem_width
         with Condition(is_store):
             log("EX: Memory Operation: STORE")
@@ -364,6 +367,7 @@ class Execution(Module):
             alu_result,
             is_load,
             is_store,
+            is_mmio,
             mem_width,
             ex_rs2_data,
         )
