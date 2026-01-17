@@ -190,7 +190,7 @@ class SingleMemory(Downstream):
         # 3. SRAM 输入计算
         # 读使能/写使能确定
         SRAM_we = (latch_state[0][0:0]) & ~flush_if
-        SRAM_re = ~(latch_state[0][0:0]) & ~flush_if
+        SRAM_re = ~(latch_state[0][0:0]) & ~flush_if & ~mmio_e_val
         # 地址计算与仲裁
         mem_result_addr = latch_if.select(latch_addr[0], mem_addr_val)
         ex_request = we_val | re_val | latch_if
