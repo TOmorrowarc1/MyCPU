@@ -40,7 +40,21 @@ class ALUOp:
     AND = Bits(16)(0b0000001000000000)
     # 占位/直通/特殊用途
     SYS = Bits(16)(0b0000010000000000)
+    # M-extension operations (multiply/divide)
+    MUL = Bits(16)(0b0000100000000000)     # bit 11: MUL
+    MULH = Bits(16)(0b0001000000000000)    # bit 12: MULH
+    MULHSU = Bits(16)(0b0010000000000000)  # bit 13: MULHSU
+    MULHU = Bits(16)(0b0100000000000000)   # bit 14: MULHU
     NOP = Bits(16)(0b1000000000000000)
+
+
+# M-extension division operations (1-hot encoding for proper select1hot support)
+class DivOp:
+    NONE = Bits(5)(0b00001)   # No division operation
+    DIV = Bits(5)(0b00010)    # Signed division
+    DIVU = Bits(5)(0b00100)   # Unsigned division
+    REM = Bits(5)(0b01000)    # Signed remainder
+    REMU = Bits(5)(0b10000)   # Unsigned remainder
 
 
 class BranchType:
@@ -134,6 +148,8 @@ mem_ctrl_signals = Record(
 ex_ctrl_signals = Record(
     # ALU 功能码，使用 Bits(16) 静态定义 (ADD:Bits(16)(0b0000000000000001), SUB:Bits(16)(0b0000000000000010), ...)
     alu_func=Bits(16),
+    # M-extension division operation (DIV/DIVU/REM/REMU) - 1-hot encoding with 5 bits
+    div_op=Bits(5),
     # rs1结果来源，使用 Bits(4) 静态定义 (RS1:Bits(4)(0b0001), EX_BYPASS:Bits(4)(0b0010), MEM_BYPASS:Bits(4)(0b0100), WB_BYPASS: Bits(4)(0b1000))
     rs1_sel=Bits(4),
     # rs2结果来源，使用 Bits(4) 静态定义 (RS2:Bits(4)(0b0001), EX_BYPASS:Bits(4)(0b0010), MEM_BYPASS:Bits(4)(0b0100), WB_BYPASS:Bits(4)(0b1000))
@@ -150,6 +166,7 @@ ex_ctrl_signals = Record(
 pre_decode_t = Record(
     # 原始控制信号
     alu_func=Bits(16),
+    div_op=Bits(5),  # M-extension division operation (1-hot encoding)
     op1_sel=Bits(3),
     op2_sel=Bits(3),
     branch_type=Bits(16),  # Branch 指令功能码
