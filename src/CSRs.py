@@ -12,6 +12,7 @@ class CSRsUnit(Downstream):
         # CSR 寄存器
         current_mode: Array,
         mstatus: Array,
+        misa: Array,
         mie: Array,
         mip: Array,
         mtvec: Array,
@@ -60,9 +61,7 @@ class CSRsUnit(Downstream):
         # 读取 CSR 寄存器值，其他合法寄存器返回 0
         csr_rdata = Bits(32)(0)
         csr_rdata |= (csr_raddr_val == Bits(12)(0x300)).select(mstatus[0], Bits(32)(0))
-        csr_rdata |= (csr_raddr_val == Bits(12)(0x301)).select(
-            Bits(32)(0x40000100), Bits(32)(0)
-        )
+        csr_rdata |= (csr_raddr_val == Bits(12)(0x301)).select(misa[0], Bits(32)(0))
         csr_rdata |= (csr_raddr_val == Bits(12)(0x304)).select(mie[0], Bits(32)(0))
         csr_rdata |= (csr_raddr_val == Bits(12)(0x344)).select(mip[0], Bits(32)(0))
         csr_rdata |= (csr_raddr_val == Bits(12)(0x305)).select(mtvec[0], Bits(32)(0))

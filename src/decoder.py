@@ -1,6 +1,7 @@
 from assassyn.frontend import *
 from .control_signals import *
 from .instruction_table import rv32i_table
+from .CSRs_valid import valid_CSRs
 
 
 # 辅助函数：生成填充位
@@ -162,10 +163,12 @@ class Decoder(Module):
         # 规则3: 尝试写入尚未定义的 CSR -> 非法
         csr_in_mmode = csr_addr[8:9] == Bits(2)(0b11)
         is_csr_ro = csr_addr[10:11] == Bits(2)(0b11)
-        # TODO: 完善 CSR 未定义列表
-        csr_access_fault = ((id_csr_re | id_csr_we) & ((in_umode & csr_in_mmode))) | (
-            id_csr_we & is_csr_ro
-        )
+        csr_defined = Bits(1)(0)
+        for valid_csr in valid_CSRs:
+            csr_defined |= (csr_addr == valid_csr).select(Bits(1)(1), Bits(1)(0))
+        csr_access_fault = (
+            (id_csr_re | id_csr_we) & ((in_umode & csr_in_mmode) | ~csr_defined)
+        ) | (id_csr_we & is_csr_ro)
         # 4.1.2 MRET 权限检查: 只有 M-Mode (11) 可以执行 mret，否则报非法指令
         is_mret_inst = inst == Bits(32)(0x30200073)
         mret_priv_fault = is_mret_inst & (~in_mmode)
