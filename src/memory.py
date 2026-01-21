@@ -186,6 +186,13 @@ class SingleMemory(Downstream):
         latch_width[0] <= latch_refresh.select(width_val, Bits(3)(1))
         # 写数据寄存器更新
         latch_data[0] <= latch_refresh.select(wdata_val, Bits(32)(0))
+        log(
+            "SingleMEM: latch_state=0b{:b},latch_addr=0x{:x}, latch_data=0x{:x}, latch_width=0b{:b}",
+            latch_state[0],
+            latch_addr[0],
+            latch_data[0],
+            latch_width[0],
+        )
 
         # 3. SRAM 输入计算
         # 读使能/写使能确定
