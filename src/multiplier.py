@@ -35,24 +35,227 @@ def full_adder_64bit(a: Bits, b: Bits, c: Bits) -> tuple:
 
 
 # =============================================================================
-# Carry-Propagate Adder (CPA) - Hardware Implementation
+# Carry-Lookahead Adder (CLA) - Hardware Implementation
 # =============================================================================
-def carry_propagate_adder_64bit(a: Bits, b: Bits) -> Bits:
-    # 64-bit Carry-Propagate Adder (CPA)
-    result = (a.bitcast(UInt(64)) + b.bitcast(UInt(64))).bitcast(Bits(64))
+def carry_lookahead_adder_4bit(a: Bits, b: Bits, cin: Bits) -> tuple:
+    """
+    4-bit Carry-Lookahead Adder (CLA)
+
+    Computes sum and carry-out using generate (G) and propagate (P) signals.
+    G[i] = a[i] & b[i]
+    P[i] = a[i] ^ b[i]
+    C[i+1] = G[i] | (P[i] & C[i])
+
+    Returns (sum, cout) where sum is 4-bit and cout is 1-bit
+    """
+    # Generate and propagate signals for each bit
+    g0 = a[0:0] & b[0:0]
+    p0 = a[0:0] ^ b[0:0]
+    g1 = a[1:1] & b[1:1]
+    p1 = a[1:1] ^ b[1:1]
+    g2 = a[2:2] & b[2:2]
+    p2 = a[2:2] ^ b[2:2]
+    g3 = a[3:3] & b[3:3]
+    p3 = a[3:3] ^ b[3:3]
+
+    # Carry lookahead equations
+    c0 = cin
+    c1 = g0 | (p0 & c0)
+    c2 = g1 | (p1 & g0) | (p1 & p0 & c0)
+    c3 = g2 | (p2 & g1) | (p2 & p1 & g0) | (p2 & p1 & p0 & c0)
+    c4 = g3 | (p3 & g2) | (p3 & p2 & g1) | (p3 & p2 & p1 & g0) | (p3 & p2 & p1 & p0 & c0)
+
+    # Sum computation: S[i] = P[i] ^ C[i]
+    s0 = p0 ^ c0
+    s1 = p1 ^ c1
+    s2 = p2 ^ c2
+    s3 = p3 ^ c3
+
+    sum_result = concat(s3, concat(s2, concat(s1, s0)))
+
+    # Group generate and propagate for hierarchical CLA
+    group_g = g3 | (p3 & g2) | (p3 & p2 & g1) | (p3 & p2 & p1 & g0)
+    group_p = p3 & p2 & p1 & p0
+
+    return (sum_result, c4, group_g, group_p)
+
+
+def carry_lookahead_adder_16bit(a: Bits, b: Bits, cin: Bits) -> tuple:
+    """
+    16-bit Carry-Lookahead Adder using four 4-bit CLA blocks with true parallel carry lookahead.
+
+    Uses a second-level LCU to compute carries c4, c8, c12 in parallel from cin.
+    Returns (sum, cout, group_g, group_p) where sum is 16-bit and cout is 1-bit.
+    """
+    # Get results from each 4-bit block with dummy cin to extract g and p
+    # Note: g and p don't depend on cin, only the sum and cout do
+    # But we need the sum, so we compute everything in one pass per block
+    # using the computed parallel carries
+
+    # First, extract g and p from each block (they don't depend on cin)
+    # We compute the 4-bit blocks' internal g/p directly
+    # For block 0: bits 0-3
+    g0_0 = a[0:0] & b[0:0]
+    p0_0 = a[0:0] ^ b[0:0]
+    g0_1 = a[1:1] & b[1:1]
+    p0_1 = a[1:1] ^ b[1:1]
+    g0_2 = a[2:2] & b[2:2]
+    p0_2 = a[2:2] ^ b[2:2]
+    g0_3 = a[3:3] & b[3:3]
+    p0_3 = a[3:3] ^ b[3:3]
+    g0 = g0_3 | (p0_3 & g0_2) | (p0_3 & p0_2 & g0_1) | (p0_3 & p0_2 & p0_1 & g0_0)
+    p0 = p0_3 & p0_2 & p0_1 & p0_0
+
+    # For block 1: bits 4-7
+    g1_0 = a[4:4] & b[4:4]
+    p1_0 = a[4:4] ^ b[4:4]
+    g1_1 = a[5:5] & b[5:5]
+    p1_1 = a[5:5] ^ b[5:5]
+    g1_2 = a[6:6] & b[6:6]
+    p1_2 = a[6:6] ^ b[6:6]
+    g1_3 = a[7:7] & b[7:7]
+    p1_3 = a[7:7] ^ b[7:7]
+    g1 = g1_3 | (p1_3 & g1_2) | (p1_3 & p1_2 & g1_1) | (p1_3 & p1_2 & p1_1 & g1_0)
+    p1 = p1_3 & p1_2 & p1_1 & p1_0
+
+    # For block 2: bits 8-11
+    g2_0 = a[8:8] & b[8:8]
+    p2_0 = a[8:8] ^ b[8:8]
+    g2_1 = a[9:9] & b[9:9]
+    p2_1 = a[9:9] ^ b[9:9]
+    g2_2 = a[10:10] & b[10:10]
+    p2_2 = a[10:10] ^ b[10:10]
+    g2_3 = a[11:11] & b[11:11]
+    p2_3 = a[11:11] ^ b[11:11]
+    g2 = g2_3 | (p2_3 & g2_2) | (p2_3 & p2_2 & g2_1) | (p2_3 & p2_2 & p2_1 & g2_0)
+    p2 = p2_3 & p2_2 & p2_1 & p2_0
+
+    # For block 3: bits 12-15
+    g3_0 = a[12:12] & b[12:12]
+    p3_0 = a[12:12] ^ b[12:12]
+    g3_1 = a[13:13] & b[13:13]
+    p3_1 = a[13:13] ^ b[13:13]
+    g3_2 = a[14:14] & b[14:14]
+    p3_2 = a[14:14] ^ b[14:14]
+    g3_3 = a[15:15] & b[15:15]
+    p3_3 = a[15:15] ^ b[15:15]
+    g3 = g3_3 | (p3_3 & g3_2) | (p3_3 & p3_2 & g3_1) | (p3_3 & p3_2 & p3_1 & g3_0)
+    p3 = p3_3 & p3_2 & p3_1 & p3_0
+
+    # Second-level Lookahead Carry Unit (LCU): compute all carries in parallel
+    c4 = g0 | (p0 & cin)
+    c8 = g1 | (p1 & g0) | (p1 & p0 & cin)
+    c12 = g2 | (p2 & g1) | (p2 & p1 & g0) | (p2 & p1 & p0 & cin)
+    c16 = g3 | (p3 & g2) | (p3 & p2 & g1) | (p3 & p2 & p1 & g0) | (p3 & p2 & p1 & p0 & cin)
+
+    # Now compute sums using the computed carries and cached p values
+    # Block 0 sums (using cin)
+    c0_0 = cin
+    c0_1 = g0_0 | (p0_0 & c0_0)
+    c0_2 = g0_1 | (p0_1 & g0_0) | (p0_1 & p0_0 & c0_0)
+    c0_3 = g0_2 | (p0_2 & g0_1) | (p0_2 & p0_1 & g0_0) | (p0_2 & p0_1 & p0_0 & c0_0)
+    s0_0 = p0_0 ^ c0_0
+    s0_1 = p0_1 ^ c0_1
+    s0_2 = p0_2 ^ c0_2
+    s0_3 = p0_3 ^ c0_3
+    s0 = concat(s0_3, concat(s0_2, concat(s0_1, s0_0)))
+
+    # Block 1 sums (using c4)
+    c1_0 = c4
+    c1_1 = g1_0 | (p1_0 & c1_0)
+    c1_2 = g1_1 | (p1_1 & g1_0) | (p1_1 & p1_0 & c1_0)
+    c1_3 = g1_2 | (p1_2 & g1_1) | (p1_2 & p1_1 & g1_0) | (p1_2 & p1_1 & p1_0 & c1_0)
+    s1_0 = p1_0 ^ c1_0
+    s1_1 = p1_1 ^ c1_1
+    s1_2 = p1_2 ^ c1_2
+    s1_3 = p1_3 ^ c1_3
+    s1 = concat(s1_3, concat(s1_2, concat(s1_1, s1_0)))
+
+    # Block 2 sums (using c8)
+    c2_0 = c8
+    c2_1 = g2_0 | (p2_0 & c2_0)
+    c2_2 = g2_1 | (p2_1 & g2_0) | (p2_1 & p2_0 & c2_0)
+    c2_3 = g2_2 | (p2_2 & g2_1) | (p2_2 & p2_1 & g2_0) | (p2_2 & p2_1 & p2_0 & c2_0)
+    s2_0 = p2_0 ^ c2_0
+    s2_1 = p2_1 ^ c2_1
+    s2_2 = p2_2 ^ c2_2
+    s2_3 = p2_3 ^ c2_3
+    s2 = concat(s2_3, concat(s2_2, concat(s2_1, s2_0)))
+
+    # Block 3 sums (using c12)
+    c3_0 = c12
+    c3_1 = g3_0 | (p3_0 & c3_0)
+    c3_2 = g3_1 | (p3_1 & g3_0) | (p3_1 & p3_0 & c3_0)
+    c3_3 = g3_2 | (p3_2 & g3_1) | (p3_2 & p3_1 & g3_0) | (p3_2 & p3_1 & p3_0 & c3_0)
+    s3_0 = p3_0 ^ c3_0
+    s3_1 = p3_1 ^ c3_1
+    s3_2 = p3_2 ^ c3_2
+    s3_3 = p3_3 ^ c3_3
+    s3 = concat(s3_3, concat(s3_2, concat(s3_1, s3_0)))
+
+    sum_result = concat(s3, concat(s2, concat(s1, s0)))
+
+    # Group generate and propagate for higher level
+    group_g = g3 | (p3 & g2) | (p3 & p2 & g1) | (p3 & p2 & p1 & g0)
+    group_p = p3 & p2 & p1 & p0
+
+    return (sum_result, c16, group_g, group_p)
+
+
+def carry_lookahead_adder_64bit(a: Bits, b: Bits) -> Bits:
+    """
+    64-bit Carry-Lookahead Adder using four 16-bit CLA blocks with true parallel carry lookahead.
+
+    This is a hierarchical CLA implementation with a top-level Lookahead Carry Unit (LCU)
+    that computes all inter-block carries in parallel using group generate and propagate signals.
+    """
+    cin = Bits(1)(0)
+
+    # Compute all four 16-bit blocks once with cin and extract g, p
+    # The 16-bit CLA function returns (sum, cout, group_g, group_p)
+    # For the first block, we use actual cin
+    s0, _, g0, p0 = carry_lookahead_adder_16bit(a[0:15], b[0:15], cin)
+
+    # For blocks 1-3, we need their g and p values which don't depend on their cin input
+    # But we also need their sums which DO depend on cin. So we compute with cin=0 first
+    # to get g and p, then compute carries, then recompute sums with correct carries.
+    # However, since we optimized carry_lookahead_adder_16bit to inline everything,
+    # we can compute each block once with the correct carry-in.
+
+    # Top-level Lookahead Carry Unit (LCU): compute all carries in parallel
+    # But first we need g1, g2, g3 and p1, p2, p3 from blocks that don't have their final cin yet
+    # We compute these with cin=0 since g and p don't depend on cin for the group signals
+    _, _, g1, p1 = carry_lookahead_adder_16bit(a[16:31], b[16:31], Bits(1)(0))
+    _, _, g2, p2 = carry_lookahead_adder_16bit(a[32:47], b[32:47], Bits(1)(0))
+    _, _, g3, p3 = carry_lookahead_adder_16bit(a[48:63], b[48:63], Bits(1)(0))
+
+    # Compute carries using the LCU equations
+    c16 = g0 | (p0 & cin)
+    c32 = g1 | (p1 & g0) | (p1 & p0 & cin)
+    c48 = g2 | (p2 & g1) | (p2 & p1 & g0) | (p2 & p1 & p0 & cin)
+
+    # Now compute sums for blocks 1-3 with correct carries
+    s1, _, _, _ = carry_lookahead_adder_16bit(a[16:31], b[16:31], c16)
+    s2, _, _, _ = carry_lookahead_adder_16bit(a[32:47], b[32:47], c32)
+    s3, _, _, _ = carry_lookahead_adder_16bit(a[48:63], b[48:63], c48)
+
+    result = concat(s3, concat(s2, concat(s1, s0)))
+
     return result
 
 
 class WallaceTreeMul:
     """
-    - Cycle 1 (EX_M1): Generate 32 partial products + Levels 1-3 (32 → 10 rows)
-    - Cycle 2 (EX_M2): Wallace Tree Levels 4-6 (10 → 4 rows)
-    - Cycle 3 (EX_M3): Wallace Tree Levels 7-8 (4 → 2 rows) + CPA final addition
+    3-cycle Wallace Tree Multiplier with Carry-Lookahead Adder
+
+    - Cycle 1 (EX_M1): Generate 32 partial products + compress 2 levels (32 → 22 → 15 rows)
+    - Cycle 2 (EX_M2): Wallace Tree compression Levels 3-8 (15 → 2 rows)
+    - Cycle 3 (EX_M3): Final addition using Carry-Lookahead Adder (CLA)
     """
 
     def __init__(self):
         # Pipeline stage registers
-        # Stage 1 (EX_M1): Partial product generation + Levels 1-3
+        # Stage 1 (EX_M1): Partial product generation + 2 levels of compression
         self.m1_valid = RegArray(Bits(1), 1, initializer=[0])
         self.m1_op1 = RegArray(Bits(32), 1, initializer=[0])
         self.m1_op2 = RegArray(Bits(32), 1, initializer=[0])
@@ -61,12 +264,14 @@ class WallaceTreeMul:
         self.m1_result_high = RegArray(Bits(1), 1, initializer=[0])  # Whether to return high 32 bits
         self.m1_rd = RegArray(Bits(5), 1, initializer=[0])  # Destination register
 
-        # Stage 2 (EX_M2): Wallace Tree compression Levels 4-6
-        # After Level 3, we have 10 rows that need to be stored
+        # Stage 2 (EX_M2): Wallace Tree compression (15 → 2 rows)
+        # Store 15 intermediate rows from Stage 1 (after 2 levels of compression)
         self.m2_valid = RegArray(Bits(1), 1, initializer=[0])
         self.m2_result_high = RegArray(Bits(1), 1, initializer=[0])
         self.m2_rd = RegArray(Bits(5), 1, initializer=[0])  # Destination register
-        # 10 intermediate rows from Level 3 output
+        # Signed multiplication correction for MULH
+        self.m2_signed_correction = RegArray(Bits(32), 1, initializer=[0])
+        # 15 intermediate rows from Stage 1 (after Level 1 and Level 2 compression)
         self.m2_row0 = RegArray(Bits(64), 1, initializer=[0])
         self.m2_row1 = RegArray(Bits(64), 1, initializer=[0])
         self.m2_row2 = RegArray(Bits(64), 1, initializer=[0])
@@ -77,17 +282,22 @@ class WallaceTreeMul:
         self.m2_row7 = RegArray(Bits(64), 1, initializer=[0])
         self.m2_row8 = RegArray(Bits(64), 1, initializer=[0])
         self.m2_row9 = RegArray(Bits(64), 1, initializer=[0])
+        self.m2_row10 = RegArray(Bits(64), 1, initializer=[0])
+        self.m2_row11 = RegArray(Bits(64), 1, initializer=[0])
+        self.m2_row12 = RegArray(Bits(64), 1, initializer=[0])
+        self.m2_row13 = RegArray(Bits(64), 1, initializer=[0])
+        self.m2_row14 = RegArray(Bits(64), 1, initializer=[0])
 
-        # Stage 3 (EX_M3): Wallace Tree final compression + CPA (Levels 7-8)
-        # After Level 6, we have 4 rows that need to be stored
+        # Stage 3 (EX_M3): Final addition using Carry-Lookahead Adder
+        # After Wallace Tree compression, we have 2 rows that need to be added
         self.m3_valid = RegArray(Bits(1), 1, initializer=[0])
         self.m3_result_high = RegArray(Bits(1), 1, initializer=[0])
         self.m3_rd = RegArray(Bits(5), 1, initializer=[0])  # Destination register
-        # 4 intermediate rows from Level 6 output
+        # 2 final rows from Wallace Tree compression output
         self.m3_row0 = RegArray(Bits(64), 1, initializer=[0])
         self.m3_row1 = RegArray(Bits(64), 1, initializer=[0])
-        self.m3_row2 = RegArray(Bits(64), 1, initializer=[0])
-        self.m3_row3 = RegArray(Bits(64), 1, initializer=[0])
+        # Signed multiplication correction for MULH
+        self.m3_signed_correction = RegArray(Bits(32), 1, initializer=[0])
 
         # Final result storage
         self.m3_result_ready = RegArray(Bits(1), 1, initializer=[0])
@@ -119,10 +329,10 @@ class WallaceTreeMul:
 
     def cycle_m1(self):
         """
-        Execute EX_M1 stage: Partial Product Generation + Wallace Tree Levels 1-3
+        Execute EX_M1 stage: Partial Product Generation + 2 Levels of Compression
 
-        This stage generates 32 partial products using AND gates and performs
-        the first three levels of Wallace Tree compression.
+        This stage generates 32 partial products using AND gates, then performs
+        Level 1 (32 → 22) and Level 2 (22 → 15) compression.
         """
         # Only process if stage 1 is valid
         with Condition(self.m1_valid[0] == Bits(1)(1)):
@@ -132,25 +342,24 @@ class WallaceTreeMul:
             op1_signed = self.m1_op1_signed[0]
             op2_signed = self.m1_op2_signed[0]
 
-            debug_log("EX_M1: Partial products + Levels 1-3 (Cycle 1/3)")
-            debug_log("EX_M1:   Op1=0x{:x} (signed={}), Op2=0x{:x} (signed={})",
-                      op1,
-                      op1_signed,
-                      op2,
-                      op2_signed)
-
             # =================================================================
             # Step 1: Sign/Zero extend operands to 64 bits
             # =================================================================
             op1_ext = sign_zero_extend(op1, op1_signed)  # 64-bit extended op1
 
             # =================================================================
-            # Step 2: Generate 32 Partial Products
+            # Step 2: Compute signed multiplication correction for MULH
+            # When op2 is signed and negative (op2[31]=1), we need to correct
+            # the result because the MSB represents -2^31 instead of +2^31.
+            # The correction is: subtract op1 from the high 32 bits of result.
+            # =================================================================
+            need_correction = op2_signed & op2[31:31]
+            signed_correction = need_correction.select(op1, Bits(32)(0))
+
+            # =================================================================
+            # Step 3: Generate 32 Partial Products
             # For each bit i of op2: pp[i] = (op2[i] ? op1_ext : 0) << i
             # =================================================================
-
-            # Helper: Generate shifted partial product for bit position i
-            # pp[i] = op2[i] ? (op1_ext << i) : 0
 
             # Generate all 32 partial products with correct shifting
             # Note: For a left shift by i bits, we concat zeros on the right
@@ -189,10 +398,8 @@ class WallaceTreeMul:
             pp31 = op2[31:31].select(concat(op1_ext[0:32], Bits(31)(0)), Bits(64)(0))
 
             # =================================================================
-            # Step 3: Wallace Tree Compression Levels 1-3 (32 → 10 rows)
-            # Using 3:2 compressors (full adders)
+            # Step 4: Wallace Tree Compression Level 1 (32 → 22 rows)
             # =================================================================
-
             # Level 1: 32 → 22 rows (10 groups of 3, 2 passthrough)
             s1_0, c1_0 = full_adder_64bit(pp0, pp1, pp2)
             s1_1, c1_1 = full_adder_64bit(pp3, pp4, pp5)
@@ -205,8 +412,11 @@ class WallaceTreeMul:
             s1_8, c1_8 = full_adder_64bit(pp24, pp25, pp26)
             s1_9, c1_9 = full_adder_64bit(pp27, pp28, pp29)
             # Passthrough: pp30, pp31
-            # Level 1 output: 22 rows
+            # Level 1 output: 22 rows total (10 sum outputs: s1_0..s1_9, 10 carry outputs: c1_0..c1_9, 2 passthrough: pp30, pp31)
 
+            # =================================================================
+            # Step 5: Wallace Tree Compression Level 2 (22 → 15 rows)
+            # =================================================================
             # Level 2: 22 → 15 rows (7 groups of 3, 1 passthrough)
             s2_0, c2_0 = full_adder_64bit(s1_0, c1_0, s1_1)
             s2_1, c2_1 = full_adder_64bit(c1_1, s1_2, c1_2)
@@ -216,7 +426,66 @@ class WallaceTreeMul:
             s2_5, c2_5 = full_adder_64bit(c1_7, s1_8, c1_8)
             s2_6, c2_6 = full_adder_64bit(s1_9, c1_9, pp30)
             # Passthrough: pp31
-            # Level 2 output: 15 rows
+            # Level 2 output: 15 rows total (7 sum outputs: s2_0..s2_6, 7 carry outputs: c2_0..c2_6, 1 passthrough: pp31)
+
+            # =================================================================
+            # Store 15 intermediate rows in stage 2 pipeline registers
+            # =================================================================
+            self.m2_valid[0] = Bits(1)(1)
+            self.m2_result_high[0] = self.m1_result_high[0]
+            self.m2_rd[0] = self.m1_rd[0]
+            self.m2_signed_correction[0] = signed_correction
+
+            # Store all 15 intermediate rows
+            self.m2_row0[0] = s2_0
+            self.m2_row1[0] = c2_0
+            self.m2_row2[0] = s2_1
+            self.m2_row3[0] = c2_1
+            self.m2_row4[0] = s2_2
+            self.m2_row5[0] = c2_2
+            self.m2_row6[0] = s2_3
+            self.m2_row7[0] = c2_3
+            self.m2_row8[0] = s2_4
+            self.m2_row9[0] = c2_4
+            self.m2_row10[0] = s2_5
+            self.m2_row11[0] = c2_5
+            self.m2_row12[0] = s2_6
+            self.m2_row13[0] = c2_6
+            self.m2_row14[0] = pp31
+
+            # Clear stage 1
+            self.m1_valid[0] = Bits(1)(0)
+
+    def cycle_m2(self):
+        """
+        Execute EX_M2 stage: Wallace Tree Compression Levels 3-8 (15 → 2 rows)
+
+        This stage continues Wallace Tree compression from 15 rows down to 2 rows.
+        """
+        # Only process if stage 2 is valid
+        with Condition(self.m2_valid[0] == Bits(1)(1)):
+
+            # Read all 15 intermediate rows from pipeline registers
+            # From Level 2 output: s2_0..s2_6, c2_0..c2_6, pp31
+            s2_0 = self.m2_row0[0]
+            c2_0 = self.m2_row1[0]
+            s2_1 = self.m2_row2[0]
+            c2_1 = self.m2_row3[0]
+            s2_2 = self.m2_row4[0]
+            c2_2 = self.m2_row5[0]
+            s2_3 = self.m2_row6[0]
+            c2_3 = self.m2_row7[0]
+            s2_4 = self.m2_row8[0]
+            c2_4 = self.m2_row9[0]
+            s2_5 = self.m2_row10[0]
+            c2_5 = self.m2_row11[0]
+            s2_6 = self.m2_row12[0]
+            c2_6 = self.m2_row13[0]
+            pp31 = self.m2_row14[0]
+
+            # =================================================================
+            # Wallace Tree Compression Levels 3-8 (15 → 2 rows)
+            # =================================================================
 
             # Level 3: 15 → 10 rows (5 groups of 3)
             s3_0, c3_0 = full_adder_64bit(s2_0, c2_0, s2_1)
@@ -224,128 +493,96 @@ class WallaceTreeMul:
             s3_2, c3_2 = full_adder_64bit(s2_3, c2_3, s2_4)
             s3_3, c3_3 = full_adder_64bit(c2_4, s2_5, c2_5)
             s3_4, c3_4 = full_adder_64bit(s2_6, c2_6, pp31)
-            # Level 3 output: 10 rows (s3_0, c3_0, s3_1, c3_1, s3_2, c3_2, s3_3, c3_3, s3_4, c3_4)
-
-            debug_log("EX_M1: Levels 1-3 complete, 10 rows remaining")
-
-            # =================================================================
-            # Store intermediate results in stage 2 pipeline registers
-            # =================================================================
-            self.m2_valid[0] = Bits(1)(1)
-            self.m2_result_high[0] = self.m1_result_high[0]
-            self.m2_rd[0] = self.m1_rd[0]
-
-            # Store the 10 intermediate rows
-            self.m2_row0[0] = s3_0
-            self.m2_row1[0] = c3_0
-            self.m2_row2[0] = s3_1
-            self.m2_row3[0] = c3_1
-            self.m2_row4[0] = s3_2
-            self.m2_row5[0] = c3_2
-            self.m2_row6[0] = s3_3
-            self.m2_row7[0] = c3_3
-            self.m2_row8[0] = s3_4
-            self.m2_row9[0] = c3_4
-
-            # Clear stage 1
-            self.m1_valid[0] = Bits(1)(0)
-
-    def cycle_m2(self):
-        """
-        Execute EX_M2 stage: Wallace Tree Compression Levels 4-6
-
-        This stage performs Wallace Tree compression levels 4-6, reducing
-        10 rows down to 4 rows.
-        """
-        # Only process if stage 2 is valid
-        with Condition(self.m2_valid[0] == Bits(1)(1)):
-            debug_log("EX_M2: Wallace Tree Levels 4-6 (Cycle 2/3)")
-
-            # Read intermediate rows from pipeline registers
-            s3_0 = self.m2_row0[0]
-            c3_0 = self.m2_row1[0]
-            s3_1 = self.m2_row2[0]
-            c3_1 = self.m2_row3[0]
-            s3_2 = self.m2_row4[0]
-            c3_2 = self.m2_row5[0]
-            s3_3 = self.m2_row6[0]
-            c3_3 = self.m2_row7[0]
-            s3_4 = self.m2_row8[0]
-            c3_4 = self.m2_row9[0]
-
-            # =================================================================
-            # Wallace Tree Compression Levels 4-6 (10 → 4 rows)
-            # =================================================================
+            # Level 3 output: 10 rows
 
             # Level 4: 10 → 7 rows (3 groups of 3, 1 passthrough)
             s4_0, c4_0 = full_adder_64bit(s3_0, c3_0, s3_1)
             s4_1, c4_1 = full_adder_64bit(c3_1, s3_2, c3_2)
             s4_2, c4_2 = full_adder_64bit(s3_3, c3_3, s3_4)
             # Passthrough: c3_4
-            # Level 4 output: 7 rows (s4_0, c4_0, s4_1, c4_1, s4_2, c4_2, c3_4)
+            # Level 4 output: 7 rows
 
             # Level 5: 7 → 5 rows (2 groups of 3, 1 passthrough)
             s5_0, c5_0 = full_adder_64bit(s4_0, c4_0, s4_1)
             s5_1, c5_1 = full_adder_64bit(c4_1, s4_2, c4_2)
             # Passthrough: c3_4
-            # Level 5 output: 5 rows (s5_0, c5_0, s5_1, c5_1, c3_4)
+            # Level 5 output: 5 rows
 
             # Level 6: 5 → 4 rows (1 group of 3, 2 passthrough)
             s6_0, c6_0 = full_adder_64bit(s5_0, c5_0, s5_1)
             # Passthrough: c5_1, c3_4
-            # Level 6 output: 4 rows (s6_0, c6_0, c5_1, c3_4)
-
-            debug_log("EX_M2: Levels 4-6 complete, 4 rows remaining")
-
-            # =================================================================
-            # Store intermediate results in stage 3 pipeline registers
-            # =================================================================
-            self.m3_valid[0] = Bits(1)(1)
-            self.m3_result_high[0] = self.m2_result_high[0]
-            self.m3_rd[0] = self.m2_rd[0]
-
-            # Store the 4 intermediate rows
-            self.m3_row0[0] = s6_0
-            self.m3_row1[0] = c6_0
-            self.m3_row2[0] = c5_1
-            self.m3_row3[0] = c3_4
-
-            # Clear stage 2
-            self.m2_valid[0] = Bits(1)(0)
-
-    def cycle_m3(self):
-        """
-        Execute EX_M3 stage: Wallace Tree Final Compression (Levels 7-8) + CPA
-
-        This stage completes the Wallace Tree compression and produces the final result.
-        """
-        # Only process if stage 3 is valid and result is not already ready
-        with Condition((self.m3_valid[0] == Bits(1)(1)) & (self.m3_result_ready[0] == Bits(1)(0))):
-            debug_log("EX_M3: Final compression + CPA (Cycle 3/3)")
-
-            # Read intermediate rows from pipeline registers
-            s6_0 = self.m3_row0[0]
-            c6_0 = self.m3_row1[0]
-            c5_1 = self.m3_row2[0]
-            c3_4 = self.m3_row3[0]
-
-            # =================================================================
-            # Wallace Tree Compression Levels 7-8 (4 → 2 rows)
-            # =================================================================
+            # Level 6 output: 4 rows
 
             # Level 7: 4 → 3 rows (1 group of 3, 1 passthrough)
             s7_0, c7_0 = full_adder_64bit(s6_0, c6_0, c5_1)
             # Passthrough: c3_4
-            # Level 7 output: 3 rows (s7_0, c7_0, c3_4)
+            # Level 7 output: 3 rows
 
             # Level 8: 3 → 2 rows (final Wallace Tree compression)
             s8_final, c8_final = full_adder_64bit(s7_0, c7_0, c3_4)
             # Final 2 rows: s8_final, c8_final
 
             # =================================================================
-            # CPA (Carry-Propagate Adder) - Final Addition
+            # Store final 2 rows in stage 3 pipeline registers
             # =================================================================
-            product_64 = carry_propagate_adder_64bit(s8_final, c8_final)
+            self.m3_valid[0] = Bits(1)(1)
+            self.m3_result_high[0] = self.m2_result_high[0]
+            self.m3_rd[0] = self.m2_rd[0]
+            self.m3_signed_correction[0] = self.m2_signed_correction[0]
+
+            # Store the 2 final rows
+            self.m3_row0[0] = s8_final
+            self.m3_row1[0] = c8_final
+
+            # Clear stage 2
+            self.m2_valid[0] = Bits(1)(0)
+
+    def cycle_m3(self):
+        """
+        Execute EX_M3 stage: Final Addition using Carry-Lookahead Adder (CLA)
+
+        This stage completes the multiplication by adding the final 2 rows
+        using a carry-lookahead adder, with signed correction integrated via 3:2 compression.
+        """
+        # Only process if stage 3 is valid and result is not already ready
+        with Condition((self.m3_valid[0] == Bits(1)(1)) & (self.m3_result_ready[0] == Bits(1)(0))):
+
+            # Read the 2 final rows from pipeline registers
+            s8_final = self.m3_row0[0]
+            c8_final = self.m3_row1[0]
+            signed_correction = self.m3_signed_correction[0]
+
+            # =================================================================
+            # Integrate signed correction using 3:2 compression
+            # Instead of computing: product_64 = sum + carry, then high -= correction
+            # We compute: product_64 = sum + carry + (-correction << 32)
+            #
+            # To subtract correction from high 32 bits, we add the two's complement:
+            # -correction = ~correction + 1
+            # We place this in bits [32:63] and handle the +1 in the carry row
+            # =================================================================
+
+            # Create the correction value as a 64-bit number positioned in high 32 bits
+            # correction_neg_high represents ~signed_correction in bits [32:63]
+            correction_inv = ~signed_correction  # Inverted bits for two's complement
+            correction_neg_64 = concat(correction_inv, Bits(32)(0))  # Place in high 32 bits
+
+            # For the +1 of two's complement, we add 1 at bit 32
+            # This can be merged into the carry row at position 32
+            # Create a 64-bit value with 1 at bit position 32 (i.e., 0x100000000)
+            correction_plus_one = Bits(64)(0x100000000)  # 1 << 32
+
+            # Use 3:2 compressor to merge s8_final, c8_final, and correction_neg_64
+            s9_0, c9_0 = full_adder_64bit(s8_final, c8_final, correction_neg_64)
+
+            # Use another 3:2 compressor to merge s9_0, c9_0, and correction_plus_one
+            s_final, c_final = full_adder_64bit(s9_0, c9_0, correction_plus_one)
+
+            # =================================================================
+            # CLA (Carry-Lookahead Adder) - Final Addition
+            # Now we have integrated the signed correction into the compression
+            # =================================================================
+            product_64 = carry_lookahead_adder_64bit(s_final, c_final)
 
             # Select which 32 bits to return based on operation type
             partial_low = product_64[0:31].bitcast(Bits(32))
@@ -355,8 +592,6 @@ class WallaceTreeMul:
                 partial_high,  # High 32 bits for MULH/MULHSU/MULHU
                 partial_low  # Low 32 bits for MUL
             )
-
-            debug_log("EX_M3: Final result: 0x{:x}", result)
 
             # Store final result and mark as ready
             self.m3_result[0] = result
